@@ -1,0 +1,177 @@
+---
+title: "Payouts Management"
+description: "Process creator earnings withdrawals"
+---
+
+## Overview
+
+Payouts transfer accumulated earnings from creators' platform balance to their bank accounts.
+
+## Accessing Payouts
+
+Navigate to **การเงิน > การจ่ายเงิน (Finance > Payouts)**.
+
+## Payout Queue
+
+The sidebar shows a badge with scheduled payouts awaiting processing.
+
+## Payouts List
+
+View all payout requests:
+
+| Column | Information |
+|--------|-------------|
+| **Request ID** | Unique identifier |
+| **Creator** | Creator name |
+| **Amount** | Requested amount |
+| **Status** | Processing status |
+| **Requested** | Request date |
+| **Bank Info** | Target account |
+
+## Payout Status
+
+| Status | Meaning |
+|--------|---------|
+| **Pending** | Awaiting admin processing |
+| **Scheduled** | Queued for payment |
+| **Processing** | Being transferred |
+| **Completed** | Successfully paid |
+| **Failed** | Transfer failed |
+| **Cancelled** | Request cancelled |
+
+## Processing Payouts
+
+<Steps>
+  <Step title="Review Request">
+    Click on a pending payout request.
+  </Step>
+  <Step title="Verify Details">
+    Check:
+    - Creator earnings balance
+    - Bank account information
+    - Request amount
+  </Step>
+  <Step title="Process Payment">
+    Initiate transfer through your payment system.
+  </Step>
+  <Step title="Update Status">
+    Mark as processing/completed.
+  </Step>
+</Steps>
+
+## Payout Verification
+
+Before processing, verify:
+
+### Earnings Balance
+- Confirm creator has sufficient balance
+- Check for any holds or disputes
+
+### Bank Information
+- Account number is correct
+- Account holder name matches
+- Bank details are complete
+
+### Request Validity
+- Request is not duplicate
+- Creator account is in good standing
+- No pending issues
+
+## Handling Failed Payouts
+
+When a transfer fails:
+1. Identify the failure reason
+2. Contact creator if bank info issue
+3. Retry once fixed
+4. Document the resolution
+
+### Common Failure Reasons
+- Incorrect bank details
+- Closed account
+- Bank rejection
+- Technical issues
+
+## Batch Processing
+
+For efficiency:
+- Process multiple payouts together
+- Schedule regular payout runs
+- Group by bank if beneficial
+
+## Payout Analytics
+
+### Financial Overview
+- Total payouts processed
+- Pending payout amount
+- Average payout size
+- Creator distribution
+
+### Processing Metrics
+- Processing time average
+- Failure rate
+- Queue size trends
+
+## Creator Communication
+
+Keep creators informed:
+- Status updates
+- Delays notification
+- Issue resolution
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Regular Schedule">
+    Process payouts on a consistent schedule.
+  </Accordion>
+
+  <Accordion title="Double-Check">
+    Verify bank details before processing large amounts.
+  </Accordion>
+
+  <Accordion title="Prompt Processing">
+    Don't let payout queue grow too long.
+  </Accordion>
+
+  <Accordion title="Clear Communication">
+    Notify creators of any issues or delays.
+  </Accordion>
+</AccordionGroup>
+
+## Security
+
+<Warning>
+Payout processing involves real money transfers. Follow all security protocols:
+- Verify identity for large amounts
+- Use secure transfer methods
+- Maintain audit trails
+- Follow approval workflows
+</Warning>
+
+## Disputes
+
+If creators dispute payout amounts:
+1. Review earnings history
+2. Check order records
+3. Verify calculations
+4. Explain discrepancies
+5. Escalate if needed
+
+## Related
+
+<CardGroup cols={2}>
+  <Card
+    title="Orders"
+    icon="shopping-cart"
+    href="/admin-guide/orders"
+  >
+    Revenue source data.
+  </Card>
+  <Card
+    title="Top-ups"
+    icon="wallet"
+    href="/admin-guide/topups"
+  >
+    Platform revenue.
+  </Card>
+</CardGroup>

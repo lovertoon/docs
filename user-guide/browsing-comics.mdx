@@ -1,0 +1,162 @@
+---
+title: "Browsing Comics & Novels"
+description: "Discover and explore content on Lovertoon"
+---
+
+## Homepage Sections
+
+The Lovertoon homepage is your gateway to discovering great content. Here's what you'll find:
+
+### Banner Carousel
+<Info>
+Featured content appears in a rotating carousel at the top of the page. This includes editor's picks, new releases, and promotional content.
+</Info>
+
+### Small Cover Promotions
+Below the banner, you'll see promoted comics in a horizontal scroll. These are curated selections and bidding winners.
+
+### Hot Stories Section
+Comics promoted by creators who have joined the Creator PASS program. These comics offer:
+- **50% discount** on chapter prices for PASS holders
+- Limited-time promotions (24 hours each)
+- Fresh recommendations from creators
+
+### Trending Top 10
+The most popular comics ranked by views. Filter by time period:
+
+| Period | Description |
+|--------|-------------|
+| **Weekly** | Top comics from the past 7 days |
+| **Monthly** | Top comics from the past 30 days |
+| **All Time** | Overall most popular comics |
+
+<Tip>
+The top 3 comics get special badges: Gold (1st), Silver (2nd), and Bronze (3rd).
+</Tip>
+
+### Pinned Stories
+Editor's pick comics that are permanently featured for their quality and popularity.
+
+### Latest Updates
+Comics with newly published chapters, organized by target audience tabs:
+- **All** - All comics regardless of audience
+- **Male** - Comics targeting male readers
+- **Female** - Comics targeting female readers
+- **BL/GL** - Boys' Love and Girls' Love content
+
+## Comics Page
+
+Visit `/comics` for the full comic browsing experience.
+
+### Filtering Options
+
+<AccordionGroup>
+  <Accordion title="Category Filter">
+    Filter by genre categories like:
+    - Action
+    - Romance
+    - Fantasy
+    - Comedy
+    - Drama
+    - Horror
+    - Sci-Fi
+    - And more...
+  </Accordion>
+
+  <Accordion title="Status Filter">
+    Filter by comic completion status:
+    - **Ongoing** - Still being updated
+    - **Completed** - Story is finished
+    - **Hiatus** - Temporarily paused
+    - **Dropped** - Discontinued
+  </Accordion>
+
+  <Accordion title="Audience Filter">
+    Filter by target audience:
+    - Male
+    - Female
+    - BL/GL
+    - All
+  </Accordion>
+
+  <Accordion title="Content Type">
+    Switch between:
+    - **Comics (การ์ตูน)** - Visual manga-style content
+    - **Novels (นิยาย)** - Text-based stories
+  </Accordion>
+</AccordionGroup>
+
+### Sorting Options
+
+Sort comics by:
+- **Latest Update** - Most recently updated first
+- **Popularity** - Most viewed comics
+- **Newest** - Recently added comics
+- **Alphabetical** - A-Z by title
+
+## Comic Detail Page
+
+Click on any comic to view its detail page at `/comics/[slug]`.
+
+### Information Displayed
+
+| Element | Description |
+|---------|-------------|
+| **Cover Image** | High-quality comic cover |
+| **Banner** | Optional banner image (displayed as background) |
+| **Title** | Comic name in Thai |
+| **English Title** | Optional English name |
+| **Creator** | Link to the creator's profile |
+| **Status** | Publication status badge |
+| **Description** | Comic synopsis |
+| **Target Audience** | Who the comic is for |
+| **Categories** | Genre tags (clickable for filtering) |
+
+### Action Buttons
+
+<CardGroup cols={2}>
+  <Card title="Start Reading" icon="play">
+    Begin from the first chapter
+  </Card>
+  <Card title="Continue Reading" icon="forward">
+    Resume from your last read chapter (if you have reading history)
+  </Card>
+  <Card title="Add to Favorites" icon="heart">
+    Save the comic to your bookshelf
+  </Card>
+</CardGroup>
+
+### Chapter List
+
+All chapters are listed with:
+- Chapter number and title
+- Publication date
+- Price (free or coin amount)
+- Purchase/read status
+- Reading progress (if you've started reading)
+
+## Creator Profiles
+
+Visit `/creator/[username]` to see a creator's public profile:
+
+- Creator display name and avatar
+- Bio/description
+- All published comics
+- Follow button
+
+<Tip>
+Follow your favorite creators to see their comics more easily!
+</Tip>
+
+## Adult Content
+
+<Warning>
+Comics marked as 18+ require age verification. Adult content is hidden by default.
+</Warning>
+
+To view adult content:
+1. Enable **Show Adult Content** in your profile settings
+2. Confirm you are 18 years or older
+3. Adult comics will now appear in your browsing
+
+Adult comics display a red **18+** badge on their cover and detail page.

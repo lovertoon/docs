@@ -1,0 +1,185 @@
+---
+title: "Top Up Coins"
+description: "How to purchase coins on Lovertoon"
+---
+
+## Accessing the Top Up Page
+
+Navigate to the top-up page at `/topup` from:
+- Profile page coin balance
+- Navigation menu
+- Purchase dialog when you don't have enough coins
+
+<Info>
+You must be logged in to purchase coins.
+</Info>
+
+## Payment Process
+
+Lovertoon uses **Stripe** for secure payment processing.
+
+<Steps>
+  <Step title="Select Package">
+    Choose a coin package from the available options. Each package shows:
+    - Number of coins
+    - Price in Thai Baht (THB)
+  </Step>
+  <Step title="Click Purchase">
+    Click the **Purchase** or **Buy** button on your selected package.
+  </Step>
+  <Step title="Stripe Checkout">
+    You'll be redirected to Stripe's secure checkout page.
+  </Step>
+  <Step title="Enter Payment Details">
+    Enter your payment information:
+    - Card number
+    - Expiry date
+    - CVV
+    - Cardholder name
+  </Step>
+  <Step title="Complete Payment">
+    Confirm your payment. You'll see a success message.
+  </Step>
+  <Step title="Coins Added">
+    Coins are automatically added to your account and you're redirected back to Lovertoon.
+  </Step>
+</Steps>
+
+## Accepted Payment Methods
+
+Stripe supports various payment methods:
+
+| Method | Supported |
+|--------|-----------|
+| Visa | Yes |
+| Mastercard | Yes |
+| American Express | Yes |
+| JCB | Yes |
+| PromptPay | May vary |
+
+<Note>
+Available payment methods may vary by region. Stripe will show all options available to you.
+</Note>
+
+## Package Options
+
+### Standard Packages
+
+| Package | Coins | Price | Value |
+|---------|-------|-------|-------|
+| **Starter** | 50 | ฿49 | Standard |
+| **Regular** | 100 | ฿89 | Better value |
+| **Popular** | 200 | ฿169 | Good value |
+| **Best Value** | 500 | ฿399 | Best deal |
+
+<Tip>
+Larger packages often offer better value per coin!
+</Tip>
+
+## Payment Status
+
+After payment, you may see these statuses:
+
+| Status | Meaning |
+|--------|---------|
+| **Pending** | Payment is being processed |
+| **Completed** | Payment successful, coins added |
+| **Failed** | Payment was declined |
+| **Refunded** | Payment was refunded |
+
+## Top-up History
+
+View your purchase history:
+
+1. Go to your Profile (`/profile`)
+2. Click on **Top-up History** tab
+3. See all your past purchases with:
+   - Date and time
+   - Package purchased
+   - Amount paid
+   - Payment status
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Payment was declined">
+    Common reasons for declined payments:
+    - Insufficient funds
+    - Card expired
+    - Incorrect card details
+    - Bank security block (contact your bank)
+
+    Try a different payment method or contact your bank.
+  </Accordion>
+
+  <Accordion title="Coins not appearing">
+    If payment completed but coins don't appear:
+    1. Wait a few minutes - sometimes there's a delay
+    2. Refresh the page
+    3. Log out and log back in
+    4. Check your top-up history for payment status
+    5. Contact support if the issue persists
+  </Accordion>
+
+  <Accordion title="Duplicate charge">
+    If you see a duplicate charge:
+    1. Check your top-up history for duplicate entries
+    2. Wait 24 hours - sometimes pending charges are released
+    3. Contact support with your payment details
+  </Accordion>
+
+  <Accordion title="Refund request">
+    Coins are generally non-refundable. However, contact support if:
+    - You were charged but didn't receive coins
+    - Technical issues caused duplicate charges
+    - Unauthorized purchase was made
+  </Accordion>
+</AccordionGroup>
+
+## Security
+
+<Info>
+Your payment information is handled securely by Stripe. Lovertoon never stores your card details.
+</Info>
+
+### Stripe Security Features
+- PCI DSS Level 1 certified
+- SSL/TLS encryption
+- Fraud detection
+- 3D Secure authentication (if enabled by your bank)
+
+## Tips for Safe Purchasing
+
+<CardGroup cols={2}>
+  <Card title="Use Secure Networks" icon="shield">
+    Avoid making purchases on public WiFi networks.
+  </Card>
+  <Card title="Verify the URL" icon="link">
+    Ensure you're on the official Lovertoon website before entering payment details.
+  </Card>
+  <Card title="Check Your Statement" icon="receipt">
+    Regularly review your bank statements for any unauthorized charges.
+  </Card>
+  <Card title="Secure Your Account" icon="lock">
+    Use a strong password to prevent unauthorized access to your account.
+  </Card>
+</CardGroup>
+
+## Related
+
+<CardGroup cols={2}>
+  <Card
+    title="Coins Overview"
+    icon="coins"
+    href="/user-guide/coins-overview"
+  >
+    Understanding the coin system.
+  </Card>
+  <Card
+    title="Purchasing Chapters"
+    icon="shopping-cart"
+    href="/user-guide/purchasing-chapters"
+  >
+    How to use your coins.
+  </Card>
+</CardGroup>

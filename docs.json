@@ -1,68 +1,137 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "Lovertoon Documentation",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#e91e63",
+    "light": "#ff4081",
+    "dark": "#c2185b"
   },
   "favicon": "/favicon.svg",
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "User Guide",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Getting Started",
             "pages": [
               "index",
               "quickstart",
-              "development"
+              "user-guide/account"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Reading Content",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "user-guide/browsing-comics",
+              "user-guide/reading-chapters",
+              "user-guide/favorites-bookshelf",
+              "user-guide/reading-history"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Coins & Payments",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "user-guide/coins-overview",
+              "user-guide/topup-coins",
+              "user-guide/purchasing-chapters",
+              "user-guide/free-reading-codes"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "PASS Subscription",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "user-guide/pass-overview",
+              "user-guide/pass-benefits",
+              "user-guide/pass-purchase"
+            ]
+          },
+          {
+            "group": "Community",
+            "pages": [
+              "user-guide/comments",
+              "user-guide/following-creators"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "Creator Guide",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Getting Started",
             "pages": [
-              "api-reference/introduction"
+              "creator-guide/overview",
+              "creator-guide/become-creator",
+              "creator-guide/dashboard-intro"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Managing Content",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "creator-guide/creating-comics",
+              "creator-guide/managing-chapters",
+              "creator-guide/chapter-pricing",
+              "creator-guide/managing-comments"
+            ]
+          },
+          {
+            "group": "Earnings & Payouts",
+            "pages": [
+              "creator-guide/earnings-overview",
+              "creator-guide/payouts",
+              "creator-guide/analytics"
+            ]
+          },
+          {
+            "group": "Marketing & Promotion",
+            "pages": [
+              "creator-guide/free-codes",
+              "creator-guide/creator-pass",
+              "creator-guide/promotion-bidding"
+            ]
+          },
+          {
+            "group": "Team Management",
+            "pages": [
+              "creator-guide/assistants"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Admin Guide",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "admin-guide/overview",
+              "admin-guide/dashboard"
+            ]
+          },
+          {
+            "group": "Content Management",
+            "pages": [
+              "admin-guide/comics-management",
+              "admin-guide/categories",
+              "admin-guide/comments-moderation",
+              "admin-guide/promotions"
+            ]
+          },
+          {
+            "group": "User Management",
+            "pages": [
+              "admin-guide/users",
+              "admin-guide/creators-approval"
+            ]
+          },
+          {
+            "group": "Finance",
+            "pages": [
+              "admin-guide/orders",
+              "admin-guide/topups",
+              "admin-guide/payouts"
             ]
           }
         ]
@@ -71,14 +140,9 @@
     "global": {
       "anchors": [
         {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
+          "anchor": "Lovertoon",
+          "href": "https://lovertoon.com",
           "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
         }
       ]
     }
@@ -91,32 +155,27 @@
     "links": [
       {
         "label": "Support",
-        "href": "mailto:hi@mintlify.com"
+        "href": "mailto:support@lovertoon.com"
       }
     ],
     "primary": {
       "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
+      "label": "Go to Lovertoon",
+      "href": "https://lovertoon.com"
     }
   },
   "contextual": {
     "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
+      "copy",
+      "view",
+      "chatgpt",
+      "claude"
+    ]
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
+      "x": "https://x.com/lovertoon",
+      "github": "https://github.com/lovertoon"
     }
   }
 }

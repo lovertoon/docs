@@ -1,80 +1,150 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: "Quick Start"
+description: "Get started with Lovertoon in minutes"
 ---
 
-## Get started in three steps
+## Create Your Account
 
-Get your documentation site running locally and make your first customization.
+Lovertoon offers two ways to create an account:
 
-### Step 1: Set up your local environment
+<Tabs>
+  <Tab title="Google Sign-In">
+    1. Click **Sign In** in the top navigation
+    2. Select **Continue with Google**
+    3. Choose your Google account
+    4. You're ready to start reading!
+  </Tab>
+  <Tab title="Email Registration">
+    1. Click **Sign Up** in the top navigation
+    2. Enter your email address
+    3. Create a secure password
+    4. Enter your display name
+    5. Click **Create Account**
+    6. Verify your email if required
+  </Tab>
+</Tabs>
+
+## Navigating the Homepage
+
+The Lovertoon homepage features several sections:
+
+### Banner Carousel
+Featured comics and promotions displayed at the top of the page.
+
+### Hot Stories
+Comics promoted by creators with active PASS subscriptions. These offer 50% discounts for PASS holders.
+
+### Trending Top 10
+Most popular comics based on views:
+- **Weekly** - This week's top comics
+- **Monthly** - This month's top comics
+- **All Time** - All-time most popular
+
+### Latest Updates
+Recently updated comics organized by target audience:
+- All
+- Male
+- Female
+- BL/GL
+
+## Finding Content
 
 <AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
+  <Accordion title="Browse Comics Page">
+    Visit `/comics` to browse all available comics with filtering options:
+    - **Category** - Filter by genre (Action, Romance, Fantasy, etc.)
+    - **Status** - Ongoing, Completed, Hiatus, Dropped
+    - **Target Audience** - Male, Female, BL/GL
+    - **Content Type** - Comic or Novel
   </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
+
+  <Accordion title="Search">
+    Use the search bar to find comics by:
+    - Title (Thai or English)
+    - Creator name
+    - Category
+  </Accordion>
+
+  <Accordion title="Creator Profiles">
+    Visit creator profiles at `/creator/[username]` to see all their works.
   </Accordion>
 </AccordionGroup>
 
-### Step 2: Deploy your changes
+## Reading Your First Comic
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+<Steps>
+  <Step title="Find a Comic">
+    Browse or search for a comic you want to read.
+  </Step>
+  <Step title="View Comic Details">
+    Click on the comic cover to see:
+    - Description
+    - Categories
+    - Creator info
+    - Chapter list
+  </Step>
+  <Step title="Start Reading">
+    Click **Start Reading** to begin from the first chapter, or select any chapter from the list.
+  </Step>
+  <Step title="Navigate Chapters">
+    Use the navigation buttons to move between chapters:
+    - Previous/Next chapter buttons
+    - Chapter dropdown for quick navigation
+  </Step>
+</Steps>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
+## Free vs Premium Chapters
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Free Chapters" icon="gift">
+    Read without spending coins. Usually the first few chapters of a comic are free.
+  </Card>
+  <Card title="Premium Chapters" icon="coins">
+    Requires coins to unlock. Shows a coin icon with the price.
+  </Card>
 </CardGroup>
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+## Your Profile
+
+Access your profile to manage:
+
+| Feature | Description |
+|---------|-------------|
+| **Coin Balance** | View your current coin balance |
+| **Favorites** | Comics you've saved to your bookshelf |
+| **Reading History** | Recently read chapters with progress |
+| **Purchased Chapters** | All chapters you've unlocked |
+| **Top-up History** | Record of coin purchases |
+
+## Quick Links
+
+<CardGroup cols={2}>
+  <Card
+    title="Top Up Coins"
+    icon="wallet"
+    href="/user-guide/topup-coins"
+  >
+    Learn how to purchase coins.
+  </Card>
+  <Card
+    title="PASS Benefits"
+    icon="ticket"
+    href="/user-guide/pass-overview"
+  >
+    Discover PASS subscription benefits.
+  </Card>
+  <Card
+    title="Become a Creator"
+    icon="pen-nib"
+    href="/creator-guide/become-creator"
+  >
+    Start publishing your own work.
+  </Card>
+  <Card
+    title="Account Settings"
+    icon="gear"
+    href="/user-guide/account"
+  >
+    Manage your account and preferences.
+  </Card>
+</CardGroup>

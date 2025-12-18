@@ -1,0 +1,168 @@
+---
+title: "Top-ups Management"
+description: "Monitor coin purchases on the platform"
+---
+
+## Overview
+
+Top-ups are coin purchases made by users via Stripe. Admins can monitor and manage these transactions.
+
+## Accessing Top-ups
+
+Navigate to **การเงิน > ประวัติการเติมเงิน (Finance > Top-ups)**.
+
+## Top-ups List
+
+View all coin purchases:
+
+| Column | Information |
+|--------|-------------|
+| **Transaction ID** | Unique identifier |
+| **User** | Buyer information |
+| **Package** | Coins purchased |
+| **Amount** | Price paid (THB) |
+| **Status** | Payment status |
+| **Date** | Transaction time |
+
+## Top-up Status
+
+| Status | Meaning |
+|--------|---------|
+| **Pending** | Processing |
+| **Completed** | Successfully processed |
+| **Failed** | Payment failed |
+| **Refunded** | Money returned |
+
+## Filtering Top-ups
+
+### By Status
+- All
+- Completed
+- Pending
+- Failed
+- Refunded
+
+### By Date
+- Today
+- This week
+- This month
+- Custom range
+
+### By User
+Search for specific user.
+
+### By Amount
+Filter by transaction amount.
+
+## Transaction Details
+
+Click on a top-up to see:
+- Full user information
+- Payment details
+- Stripe transaction ID
+- Processing timeline
+- Coin allocation
+
+## Handling Issues
+
+### Failed Payments
+When users report failed payments:
+1. Find the transaction
+2. Check status and error
+3. Verify Stripe records
+4. Guide user or process refund
+
+### Missing Coins
+When coins don't appear:
+1. Verify payment status
+2. Check user balance
+3. Look for processing delays
+4. Manually credit if confirmed paid
+
+### Refund Requests
+Evaluate refund eligibility:
+- Technical issues
+- Unauthorized purchases
+- Duplicate charges
+
+## Financial Reports
+
+### Revenue Analysis
+- Total top-up revenue
+- Revenue by period
+- Package popularity
+- User spending patterns
+
+### Transaction Volume
+- Daily/weekly/monthly transactions
+- Success/failure rates
+- Peak usage times
+
+## Payment Provider (Stripe)
+
+Top-ups are processed through Stripe:
+- Secure card processing
+- Multiple payment methods
+- Automatic receipt generation
+- Fraud protection
+
+### Stripe Dashboard
+For detailed payment management, access Stripe dashboard directly for:
+- Refund processing
+- Dispute handling
+- Payment analytics
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Quick Resolution">
+    Resolve payment issues quickly to maintain user trust.
+  </Accordion>
+
+  <Accordion title="Verify Before Refunding">
+    Confirm payment status before processing refunds.
+  </Accordion>
+
+  <Accordion title="Monitor Patterns">
+    Watch for unusual top-up patterns that might indicate fraud.
+  </Accordion>
+
+  <Accordion title="Document Issues">
+    Keep records of payment issues and resolutions.
+  </Accordion>
+</AccordionGroup>
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="Payment Declined">
+    User's bank declined. Advise to contact bank or use different card.
+  </Accordion>
+
+  <Accordion title="Duplicate Charge">
+    Verify in Stripe. Process refund for duplicate if confirmed.
+  </Accordion>
+
+  <Accordion title="Coins Not Credited">
+    Check if payment completed. Manual credit if payment confirmed but coins missing.
+  </Accordion>
+</AccordionGroup>
+
+## Related
+
+<CardGroup cols={2}>
+  <Card
+    title="Orders"
+    icon="shopping-cart"
+    href="/admin-guide/orders"
+  >
+    Chapter purchases.
+  </Card>
+  <Card
+    title="Payouts"
+    icon="money-bill"
+    href="/admin-guide/payouts"
+  >
+    Creator withdrawals.
+  </Card>
+</CardGroup>
