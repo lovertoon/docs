@@ -1,0 +1,370 @@
+---
+title: "Auth Providers"
+description: "Google OAuth and Credentials authentication"
+---
+
+## Configured Providers
+
+Lovertoon supports two authentication providers:
+
+1. **Google OAuth** - Social login
+2. **Credentials** - Email/password login
+
+## Google OAuth
+
+### Configuration
+
+```typescript
+// src/server/auth/config.ts
+import GoogleProvider from "next-auth/providers/google";
+
+GoogleProvider({
+  clientId: env.AUTH_GOOGLE_ID,
+  clientSecret: env.AUTH_GOOGLE_SECRET,
+})
+```
+
+### Environment Variables
+
+```bash
+AUTH_GOOGLE_ID="your-google-client-id.apps.googleusercontent.com"
+AUTH_GOOGLE_SECRET="your-google-client-secret"
+```
+
+### Google Cloud Setup
+
+<Steps>
+  <Step title="Create Project">
+    Go to [Google Cloud Console](https://console.cloud.google.com/) and create a new project.
+  </Step>
+  <Step title="Enable APIs">
+    Enable the Google+ API in APIs & Services.
+  </Step>
+  <Step title="Create Credentials">
+    Go to Credentials → Create Credentials → OAuth 2.0 Client ID.
+  </Step>
+  <Step title="Configure OAuth">
+    - Application type: Web application
+    - Name: Lovertoon
+    - Authorized JavaScript origins: `http://localhost:3000`
+    - Authorized redirect URIs: `http://localhost:3000/api/auth/callback/google`
+  </Step>
+  <Step title="Copy Credentials">
+    Copy Client ID and Client Secret to your `.env` file.
+  </Step>
+</Steps>
+
+### Production URLs
+
+For production, add:
+- Origin: `https://lovertoon.com`
+- Redirect: `https://lovertoon.com/api/auth/callback/google`
+
+## Credentials Provider
+
+### Configuration
+
+```typescript
+// src/server/auth/config.ts
+import CredentialsProvider from "next-auth/providers/credentials";
+import bcrypt from "bcryptjs";
+
+CredentialsProvider({
+  name: "credentials",
+  credentials: {
+    email: { label: "Email", type: "email" },
+    password: { label: "Password", type: "password" },
+  },
+  async authorize(credentials) {
+    if (!credentials?.email || !credentials?.password) {
+      return null;
+    }
+
+    // Find user by email
+    const user = await db.query.lovertoonUsers.findFirst({
+      where: eq(users.email, credentials.email),
+    });
+
+    if (!user?.password) {
+      return null; // User doesn't exist or uses OAuth
+    }
+
+    // Verify password
+    const isValid = await bcrypt.compare(credentials.password, user.password);
+
+    if (!isValid) {
+      return null;
+    }
+
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      image: user.image,
+    };
+  },
+})
+```
+
+### Password Hashing
+
+User passwords are hashed with bcrypt:
+
+```typescript
+import bcrypt from "bcryptjs";
+
+// Registration - hash password
+const hashedPassword = await bcrypt.hash(password, 12);
+
+await db.insert(users).values({
+  email,
+  name,
+  password: hashedPassword,
+});
+
+// Login - verify password
+const isValid = await bcrypt.compare(inputPassword, user.password);
+```
+
+### Registration Flow
+
+```typescript
+// src/server/api/routers/auth.ts
+export const authRouter = createTRPCRouter({
+  register: publicProcedure
+    .input(z.object({
+      email: z.string().email(),
+      password: z.string().min(8),
+      name: z.string().min(1),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // Check existing user
+      const existing = await ctx.db.query.lovertoonUsers.findFirst({
+        where: eq(users.email, input.email),
+      });
+
+      if (existing) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "อีเมลนี้ถูกใช้งานแล้ว",
+        });
+      }
+
+      // Hash password
+      const hashedPassword = await bcrypt.hash(input.password, 12);
+
+      // Create user
+      const [newUser] = await ctx.db.insert(users).values({
+        email: input.email,
+        name: input.name,
+        password: hashedPassword,
+        role: "user",
+        coin: 0,
+      }).returning();
+
+      return { success: true, userId: newUser.id };
+    }),
+});
+```
+
+## Provider Selection UI
+
+```typescript
+// src/app/(auth)/signin/page.tsx
+"use client";
+import { signIn } from "next-auth/react";
+
+export default function SignInPage() {
+  return (
+    <div className="space-y-4">
+      {/* Google OAuth */}
+      <button
+        onClick={() => signIn("google", { callbackUrl: "/" })}
+        className="w-full bg-white border"
+      >
+        <GoogleIcon />
+        เข้าสู่ระบบด้วย Google
+      </button>
+
+      <div className="relative">
+        <div className="border-t" />
+        <span className="bg-white px-2 text-gray-500">หรือ</span>
+      </div>
+
+      {/* Credentials Form */}
+      <form onSubmit={handleCredentialsLogin}>
+        <input type="email" name="email" placeholder="อีเมล" />
+        <input type="password" name="password" placeholder="รหัสผ่าน" />
+        <button type="submit">เข้าสู่ระบบ</button>
+      </form>
+    </div>
+  );
+}
+```
+
+## Credentials Login Handler
+
+```typescript
+"use client";
+import { signIn } from "next-auth/react";
+import { useRouter } from "next/navigation";
+
+export function LoginForm() {
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    const formData = new FormData(e.target as HTMLFormElement);
+
+    const result = await signIn("credentials", {
+      email: formData.get("email"),
+      password: formData.get("password"),
+      redirect: false,
+    });
+
+    if (result?.error) {
+      setError("อีเมลหรือรหัสผ่านไม่ถูกต้อง");
+    } else {
+      router.push("/");
+      router.refresh();
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      {error && <div className="text-red-500">{error}</div>}
+      <input type="email" name="email" required />
+      <input type="password" name="password" required />
+      <button type="submit">เข้าสู่ระบบ</button>
+    </form>
+  );
+}
+```
+
+## Password Reset
+
+### OTP-Based Reset
+
+```typescript
+// 1. Request reset - send OTP email
+auth.requestPasswordReset
+  .input(z.object({ email: z.string().email() }))
+  .mutation(async ({ ctx, input }) => {
+    const user = await ctx.db.query.lovertoonUsers.findFirst({
+      where: eq(users.email, input.email),
+    });
+
+    if (!user) {
+      // Don't reveal if email exists
+      return { success: true };
+    }
+
+    // Generate 6-digit OTP
+    const otp = Math.random().toString().slice(2, 8);
+
+    // Store token with expiry
+    await ctx.db.insert(passwordResetTokens).values({
+      email: input.email,
+      token: otp,
+      expires: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes
+    });
+
+    // Send email via Resend
+    await sendPasswordResetEmail(input.email, otp);
+
+    return { success: true };
+  });
+
+// 2. Verify OTP and reset password
+auth.resetPassword
+  .input(z.object({
+    email: z.string().email(),
+    token: z.string().length(6),
+    newPassword: z.string().min(8),
+  }))
+  .mutation(async ({ ctx, input }) => {
+    // Find valid token
+    const resetToken = await ctx.db.query.lovertoonPasswordResetTokens.findFirst({
+      where: and(
+        eq(passwordResetTokens.email, input.email),
+        eq(passwordResetTokens.token, input.token),
+        gt(passwordResetTokens.expires, new Date()),
+      ),
+    });
+
+    if (!resetToken) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "รหัส OTP ไม่ถูกต้องหรือหมดอายุ",
+      });
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(input.newPassword, 12);
+
+    // Update user password
+    await ctx.db.update(users)
+      .set({ password: hashedPassword })
+      .where(eq(users.email, input.email));
+
+    // Delete used token
+    await ctx.db.delete(passwordResetTokens)
+      .where(eq(passwordResetTokens.id, resetToken.id));
+
+    return { success: true };
+  });
+```
+
+## Account Linking
+
+When a user signs up with email then tries Google (or vice versa):
+
+```typescript
+// In auth config callbacks
+async signIn({ user, account }) {
+  // Allow linking if email matches existing account
+  if (account?.provider === "google") {
+    const existingUser = await db.query.lovertoonUsers.findFirst({
+      where: eq(users.email, user.email!),
+    });
+
+    if (existingUser) {
+      // Link Google account to existing user
+      await db.insert(accounts).values({
+        userId: existingUser.id,
+        provider: account.provider,
+        providerAccountId: account.providerAccountId,
+        type: account.type,
+        // ... other fields
+      });
+    }
+  }
+
+  return true;
+}
+```
+
+## Security Considerations
+
+<AccordionGroup>
+  <Accordion title="Password Requirements">
+    - Minimum 8 characters
+    - bcrypt with salt rounds of 12
+    - Never store plaintext passwords
+  </Accordion>
+
+  <Accordion title="Rate Limiting">
+    Implement rate limiting on login attempts to prevent brute force attacks.
+  </Accordion>
+
+  <Accordion title="CSRF Protection">
+    NextAuth.js handles CSRF tokens automatically.
+  </Accordion>
+
+  <Accordion title="Secure Cookies">
+    - HttpOnly cookies
+    - Secure flag in production
+    - SameSite=Lax
+  </Accordion>
+</AccordionGroup>

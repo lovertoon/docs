@@ -1,0 +1,352 @@
+---
+title: "Email with Resend"
+description: "Transactional emails using Resend"
+---
+
+## Overview
+
+Lovertoon uses [Resend](https://resend.com) for transactional emails:
+- Password reset OTPs
+- Welcome emails
+- Notification emails
+
+## Configuration
+
+### Environment Variable
+
+```bash
+RESEND_API_KEY="re_..."
+```
+
+### Resend Client
+
+```typescript
+// src/server/email/resend.ts
+import { Resend } from "resend";
+import { env } from "~/env";
+
+export const resend = new Resend(env.RESEND_API_KEY);
+```
+
+## Email Templates
+
+### Password Reset OTP
+
+```typescript
+// src/server/email/templates/password-reset.tsx
+import { Html, Body, Container, Text, Heading } from "@react-email/components";
+
+interface PasswordResetEmailProps {
+  otp: string;
+}
+
+export function PasswordResetEmail({ otp }: PasswordResetEmailProps) {
+  return (
+    <Html>
+      <Body style={body}>
+        <Container style={container}>
+          <Heading style={heading}>รีเซ็ตรหัสผ่าน</Heading>
+          <Text style={text}>
+            รหัส OTP สำหรับรีเซ็ตรหัสผ่านของคุณคือ:
+          </Text>
+          <Text style={otpStyle}>{otp}</Text>
+          <Text style={text}>
+            รหัสนี้จะหมดอายุใน 15 นาที
+          </Text>
+          <Text style={footer}>
+            หากคุณไม่ได้ขอรีเซ็ตรหัสผ่าน กรุณาเพิกเฉยอีเมลนี้
+          </Text>
+        </Container>
+      </Body>
+    </Html>
+  );
+}
+
+const body = {
+  backgroundColor: "#f6f9fc",
+  fontFamily: "-apple-system, sans-serif",
+};
+
+const container = {
+  backgroundColor: "#ffffff",
+  margin: "0 auto",
+  padding: "20px",
+  maxWidth: "600px",
+};
+
+const heading = {
+  fontSize: "24px",
+  fontWeight: "bold",
+  textAlign: "center" as const,
+  color: "#e91e63",
+};
+
+const text = {
+  fontSize: "16px",
+  lineHeight: "24px",
+  color: "#333",
+};
+
+const otpStyle = {
+  fontSize: "32px",
+  fontWeight: "bold",
+  textAlign: "center" as const,
+  letterSpacing: "8px",
+  color: "#e91e63",
+  padding: "20px",
+  backgroundColor: "#f8f8f8",
+  borderRadius: "8px",
+};
+
+const footer = {
+  fontSize: "12px",
+  color: "#666",
+  marginTop: "20px",
+};
+```
+
+### Welcome Email
+
+```typescript
+// src/server/email/templates/welcome.tsx
+export function WelcomeEmail({ name }: { name: string }) {
+  return (
+    <Html>
+      <Body style={body}>
+        <Container style={container}>
+          <Heading style={heading}>ยินดีต้อนรับสู่ Lovertoon!</Heading>
+          <Text style={text}>
+            สวัสดีคุณ {name},
+          </Text>
+          <Text style={text}>
+            ขอบคุณที่สมัครสมาชิกกับเรา ตอนนี้คุณสามารถเพลิดเพลินกับการ์ตูนและนิยายมากมายได้แล้ว!
+          </Text>
+          <Button style={button} href="https://lovertoon.com/comics">
+            เริ่มอ่านเลย
+          </Button>
+        </Container>
+      </Body>
+    </Html>
+  );
+}
+```
+
+## Sending Emails
+
+### Password Reset
+
+```typescript
+// src/server/api/routers/auth.ts
+import { resend } from "~/server/email/resend";
+import { PasswordResetEmail } from "~/server/email/templates/password-reset";
+
+export const authRouter = createTRPCRouter({
+  requestPasswordReset: publicProcedure
+    .input(z.object({ email: z.string().email() }))
+    .mutation(async ({ ctx, input }) => {
+      // Find user
+      const user = await ctx.db.query.lovertoonUsers.findFirst({
+        where: eq(users.email, input.email),
+      });
+
+      // Always return success (don't reveal if email exists)
+      if (!user) {
+        return { success: true };
+      }
+
+      // Generate 6-digit OTP
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+      // Store OTP with expiry
+      await ctx.db.insert(passwordResetTokens).values({
+        email: input.email,
+        token: otp,
+        expires: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes
+      });
+
+      // Send email
+      await resend.emails.send({
+        from: "Lovertoon <noreply@lovertoon.com>",
+        to: input.email,
+        subject: "รีเซ็ตรหัสผ่าน - Lovertoon",
+        react: PasswordResetEmail({ otp }),
+      });
+
+      return { success: true };
+    }),
+});
+```
+
+### Welcome Email
+
+```typescript
+// In auth events or after registration
+events: {
+  async createUser({ user }) {
+    if (user.email && user.name) {
+      await resend.emails.send({
+        from: "Lovertoon <welcome@lovertoon.com>",
+        to: user.email,
+        subject: "ยินดีต้อนรับสู่ Lovertoon!",
+        react: WelcomeEmail({ name: user.name }),
+      });
+    }
+  },
+}
+```
+
+## Email Utility Function
+
+```typescript
+// src/server/email/send.ts
+import { resend } from "./resend";
+import type { ReactElement } from "react";
+
+interface SendEmailOptions {
+  to: string;
+  subject: string;
+  template: ReactElement;
+  from?: string;
+}
+
+export async function sendEmail({
+  to,
+  subject,
+  template,
+  from = "Lovertoon <noreply@lovertoon.com>",
+}: SendEmailOptions) {
+  try {
+    const { data, error } = await resend.emails.send({
+      from,
+      to,
+      subject,
+      react: template,
+    });
+
+    if (error) {
+      console.error("Failed to send email:", error);
+      throw new Error("Failed to send email");
+    }
+
+    return data;
+  } catch (error) {
+    console.error("Email error:", error);
+    throw error;
+  }
+}
+
+// Usage
+await sendEmail({
+  to: "user@example.com",
+  subject: "รีเซ็ตรหัสผ่าน",
+  template: PasswordResetEmail({ otp: "123456" }),
+});
+```
+
+## Resend Setup
+
+### Create Account
+
+1. Sign up at [resend.com](https://resend.com)
+2. Get API key from dashboard
+3. Add to environment variables
+
+### Domain Verification
+
+For production emails from your domain:
+
+<Steps>
+  <Step title="Add Domain">
+    Go to Resend dashboard → Domains → Add Domain
+  </Step>
+  <Step title="Add DNS Records">
+    Add the provided DNS records (SPF, DKIM, DMARC)
+  </Step>
+  <Step title="Verify">
+    Wait for verification (usually a few minutes)
+  </Step>
+  <Step title="Update From Address">
+    Use `noreply@yourdomain.com` as the from address
+  </Step>
+</Steps>
+
+### Development
+
+In development, you can:
+- Use Resend's test domain (`onboarding@resend.dev`)
+- Send to verified email addresses only
+- View emails in Resend dashboard
+
+## Email Types
+
+| Type | When Sent |
+|------|-----------|
+| Password Reset | User requests password reset |
+| Welcome | New user registration |
+| Purchase Confirmation | After coin purchase |
+| Payout Notification | Creator payout processed |
+| Creator Approved | Application approved |
+| Creator Declined | Application declined |
+
+## Error Handling
+
+```typescript
+try {
+  await resend.emails.send({...});
+} catch (error) {
+  if (error instanceof Error) {
+    // Log error but don't fail the operation
+    console.error("Email send failed:", error.message);
+
+    // Optionally queue for retry
+    await queueEmailRetry({...});
+  }
+}
+```
+
+## Testing Emails
+
+### Preview in Development
+
+```typescript
+// Use React Email preview server
+npm run email:dev
+```
+
+### Test Send
+
+```typescript
+// Test specific template
+const { data, error } = await resend.emails.send({
+  from: "onboarding@resend.dev",
+  to: "your-email@example.com",
+  subject: "Test Email",
+  react: PasswordResetEmail({ otp: "123456" }),
+});
+
+console.log(data, error);
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="React Email Templates">
+    Use React Email for type-safe, reusable templates.
+  </Accordion>
+
+  <Accordion title="Don't Block Operations">
+    Send emails asynchronously. Don't let email failures block user operations.
+  </Accordion>
+
+  <Accordion title="Rate Limiting">
+    Implement rate limiting for password reset requests.
+  </Accordion>
+
+  <Accordion title="Unsubscribe Links">
+    Include unsubscribe links for marketing emails.
+  </Accordion>
+
+  <Accordion title="Plain Text Fallback">
+    Consider providing plain text version for email clients that don't support HTML.
+  </Accordion>
+</AccordionGroup>

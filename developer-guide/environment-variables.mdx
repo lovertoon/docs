@@ -1,0 +1,362 @@
+---
+title: "Environment Variables"
+description: "Configuration and environment setup"
+---
+
+## Overview
+
+Lovertoon uses `@t3-oss/env-nextjs` for type-safe environment variables with runtime validation.
+
+## Environment File
+
+Create `.env` in the project root:
+
+```bash
+# Authentication
+AUTH_SECRET="your-auth-secret-here"
+AUTH_URL="http://localhost:3000"
+AUTH_GOOGLE_ID="your-google-client-id"
+AUTH_GOOGLE_SECRET="your-google-client-secret"
+
+# Database
+DATABASE_URL="postgresql://user:password@localhost:5432/lovertoon"
+
+# Cloudflare R2 Storage
+R2_ACCOUNT_ID="your-cloudflare-account-id"
+R2_ACCESS_KEY_ID="your-r2-access-key"
+R2_SECRET_ACCESS_KEY="your-r2-secret-key"
+R2_BUCKET_NAME="lovertoon"
+R2_PUBLIC_DOMAIN="https://cdn.lovertoon.com"
+
+# Stripe Payments
+STRIPE_SECRET_KEY="sk_test_..."
+STRIPE_WEBHOOK_SECRET="whsec_..."
+
+# Email (Resend)
+RESEND_API_KEY="re_..."
+
+# Cron Jobs
+CRON_SECRET="your-cron-secret"
+```
+
+## Environment Schema
+
+The schema is defined in `src/env.js`:
+
+```javascript
+import { createEnv } from "@t3-oss/env-nextjs";
+import { z } from "zod";
+
+export const env = createEnv({
+  server: {
+    // Auth - Required in production
+    AUTH_SECRET:
+      process.env.NODE_ENV === "production"
+        ? z.string()
+        : z.string().optional(),
+    AUTH_URL:
+      process.env.NODE_ENV === "production"
+        ? z.string().url()
+        : z.string().url().optional(),
+    AUTH_GOOGLE_ID: z.string(),
+    AUTH_GOOGLE_SECRET: z.string(),
+
+    // Database
+    DATABASE_URL: z.string().url(),
+
+    // Node environment
+    NODE_ENV: z
+      .enum(["development", "test", "production"])
+      .default("development"),
+
+    // R2 Storage
+    R2_ACCOUNT_ID: z.string(),
+    R2_ACCESS_KEY_ID: z.string(),
+    R2_SECRET_ACCESS_KEY: z.string(),
+    R2_BUCKET_NAME: z.string(),
+    R2_PUBLIC_DOMAIN: z.string().url(),
+
+    // Stripe
+    STRIPE_SECRET_KEY: z.string(),
+    STRIPE_WEBHOOK_SECRET: z.string(),
+
+    // Email
+    RESEND_API_KEY: z.string(),
+
+    // Cron
+    CRON_SECRET: z.string(),
+  },
+
+  client: {
+    // Client-side variables (NEXT_PUBLIC_ prefix)
+    // NEXT_PUBLIC_EXAMPLE: z.string(),
+  },
+
+  runtimeEnv: {
+    AUTH_SECRET: process.env.AUTH_SECRET,
+    AUTH_URL: process.env.AUTH_URL,
+    AUTH_GOOGLE_ID: process.env.AUTH_GOOGLE_ID,
+    AUTH_GOOGLE_SECRET: process.env.AUTH_GOOGLE_SECRET,
+    DATABASE_URL: process.env.DATABASE_URL,
+    NODE_ENV: process.env.NODE_ENV,
+    R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID,
+    R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,
+    R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,
+    R2_BUCKET_NAME: process.env.R2_BUCKET_NAME,
+    R2_PUBLIC_DOMAIN: process.env.R2_PUBLIC_DOMAIN,
+    STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
+    STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
+    RESEND_API_KEY: process.env.RESEND_API_KEY,
+    CRON_SECRET: process.env.CRON_SECRET,
+  },
+
+  skipValidation: !!process.env.SKIP_ENV_VALIDATION,
+  emptyStringAsUndefined: true,
+});
+```
+
+## Variable Reference
+
+### Authentication
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `AUTH_SECRET` | NextAuth secret for signing tokens | Production |
+| `AUTH_URL` | Base URL for auth callbacks | Production |
+| `AUTH_GOOGLE_ID` | Google OAuth client ID | Yes |
+| `AUTH_GOOGLE_SECRET` | Google OAuth client secret | Yes |
+
+### Database
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `DATABASE_URL` | PostgreSQL connection string | Yes |
+
+```bash
+# Format
+DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DATABASE"
+
+# Local development
+DATABASE_URL="postgresql://postgres:password@localhost:5432/lovertoon"
+
+# Docker
+DATABASE_URL="postgresql://postgres:password@db:5432/lovertoon"
+
+# Production (with SSL)
+DATABASE_URL="postgresql://user:pass@host:5432/lovertoon?sslmode=require"
+```
+
+### Cloudflare R2
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `R2_ACCOUNT_ID` | Cloudflare account ID | Yes |
+| `R2_ACCESS_KEY_ID` | R2 API access key | Yes |
+| `R2_SECRET_ACCESS_KEY` | R2 API secret key | Yes |
+| `R2_BUCKET_NAME` | R2 bucket name | Yes |
+| `R2_PUBLIC_DOMAIN` | CDN domain for public URLs | Yes |
+
+### Stripe
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `STRIPE_SECRET_KEY` | Stripe API secret key | Yes |
+| `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret | Yes |
+
+```bash
+# Test keys
+STRIPE_SECRET_KEY="sk_test_..."
+STRIPE_WEBHOOK_SECRET="whsec_..."
+
+# Production keys
+STRIPE_SECRET_KEY="sk_live_..."
+STRIPE_WEBHOOK_SECRET="whsec_..."
+```
+
+### Email
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `RESEND_API_KEY` | Resend API key | Yes |
+
+### Cron
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `CRON_SECRET` | Secret for authenticating cron job requests | Yes |
+
+## Usage
+
+### Importing Environment Variables
+
+```typescript
+// Always import from env.js, not process.env
+import { env } from "~/env";
+
+// Use type-safe variables
+const dbUrl = env.DATABASE_URL;
+const stripeKey = env.STRIPE_SECRET_KEY;
+```
+
+### Why Not process.env?
+
+```typescript
+// BAD - No type safety, no validation
+const key = process.env.STRIPE_SECRET_KEY;
+// key is string | undefined, might be empty
+
+// GOOD - Type-safe, validated at startup
+import { env } from "~/env";
+const key = env.STRIPE_SECRET_KEY;
+// key is string, guaranteed to exist
+```
+
+## Validation Behavior
+
+### Build Time
+
+Environment variables are validated when:
+- Running `bun run build`
+- Starting `bun run dev`
+
+Invalid or missing variables cause the build to fail with clear error messages.
+
+### Skipping Validation
+
+For Docker builds or CI, you can skip validation:
+
+```bash
+SKIP_ENV_VALIDATION=true bun run build
+```
+
+### Empty String Handling
+
+Empty strings are treated as undefined:
+
+```javascript
+emptyStringAsUndefined: true,
+```
+
+This means:
+```bash
+AUTH_SECRET=""  # Treated as undefined, will fail validation
+AUTH_SECRET="value"  # Valid
+```
+
+## Environment Per Stage
+
+### Development
+
+```bash
+# .env.local (gitignored)
+NODE_ENV=development
+DATABASE_URL="postgresql://postgres:password@localhost:5432/lovertoon_dev"
+STRIPE_SECRET_KEY="sk_test_..."
+```
+
+### Staging
+
+```bash
+# .env.staging
+NODE_ENV=production
+DATABASE_URL="postgresql://...staging..."
+STRIPE_SECRET_KEY="sk_test_..."  # Still test keys
+```
+
+### Production
+
+```bash
+# .env.production (in deployment platform)
+NODE_ENV=production
+DATABASE_URL="postgresql://...production..."
+STRIPE_SECRET_KEY="sk_live_..."  # Live keys
+```
+
+## Adding New Variables
+
+<Steps>
+  <Step title="Add to Schema">
+    Add the variable to `server` or `client` in `src/env.js`:
+    ```javascript
+    server: {
+      NEW_VAR: z.string(),
+    },
+    ```
+  </Step>
+  <Step title="Add to runtimeEnv">
+    Map the variable in `runtimeEnv`:
+    ```javascript
+    runtimeEnv: {
+      NEW_VAR: process.env.NEW_VAR,
+    },
+    ```
+  </Step>
+  <Step title="Add to .env">
+    Add the actual value to your `.env` file:
+    ```bash
+    NEW_VAR="value"
+    ```
+  </Step>
+  <Step title="Use in Code">
+    Import and use:
+    ```typescript
+    import { env } from "~/env";
+    console.log(env.NEW_VAR);
+    ```
+  </Step>
+</Steps>
+
+## Client-Side Variables
+
+For variables needed in the browser, use `NEXT_PUBLIC_` prefix:
+
+```javascript
+// src/env.js
+client: {
+  NEXT_PUBLIC_APP_URL: z.string().url(),
+},
+
+runtimeEnv: {
+  NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+},
+```
+
+```bash
+# .env
+NEXT_PUBLIC_APP_URL="https://lovertoon.com"
+```
+
+```typescript
+// Client component
+"use client";
+import { env } from "~/env";
+console.log(env.NEXT_PUBLIC_APP_URL);
+```
+
+<Warning>
+Never expose secret keys to the client. Only use `NEXT_PUBLIC_` for non-sensitive values.
+</Warning>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Never Commit Secrets">
+    Add `.env` to `.gitignore`. Use `.env.example` for documentation.
+  </Accordion>
+
+  <Accordion title="Use Strong Secrets">
+    Generate secrets with: `openssl rand -base64 32`
+  </Accordion>
+
+  <Accordion title="Validate Early">
+    Environment validation runs at build/startup, catching issues early.
+  </Accordion>
+
+  <Accordion title="Document Required Variables">
+    Keep `.env.example` up to date with all required variables.
+  </Accordion>
+
+  <Accordion title="Separate by Environment">
+    Use different keys for development, staging, and production.
+  </Accordion>
+</AccordionGroup>

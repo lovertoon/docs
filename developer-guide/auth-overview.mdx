@@ -1,0 +1,244 @@
+---
+title: "Authentication Overview"
+description: "NextAuth.js authentication system"
+---
+
+## Overview
+
+Lovertoon uses **NextAuth.js v5 (beta)** for authentication, supporting both OAuth providers and credentials-based login.
+
+## Key Features
+
+- **Multiple Providers**: Google OAuth + Email/Password
+- **Database Sessions**: Sessions stored in PostgreSQL
+- **Extended Session**: Custom properties (coins, role)
+- **Type-Safe**: Full TypeScript integration
+- **Drizzle Adapter**: Seamless database integration
+
+## Architecture
+
+```
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────┐
+│                 │     │                  │     │             │
+│  Login Page     │────►│  NextAuth.js     │────►│  Database   │
+│  (/signin)      │     │  (Auth.js)       │     │  Sessions   │
+│                 │     │                  │     │             │
+└─────────────────┘     └────────┬─────────┘     └─────────────┘
+                                 │
+                        ┌────────┴────────┐
+                        │                 │
+                ┌───────▼──────┐  ┌───────▼──────┐
+                │    Google    │  │ Credentials  │
+                │    OAuth     │  │ (Password)   │
+                └──────────────┘  └──────────────┘
+```
+
+## Configuration Files
+
+```
+src/server/auth/
+├── index.ts        # Auth exports
+└── config.ts       # NextAuth configuration
+```
+
+## Basic Usage
+
+### Server Side
+
+```typescript
+import { auth } from "~/server/auth";
+
+// Get session in Server Component
+export default async function Page() {
+  const session = await auth();
+
+  if (!session?.user) {
+    redirect("/signin");
+  }
+
+  return <div>Hello {session.user.name}</div>;
+}
+```
+
+### Client Side
+
+```typescript
+"use client";
+import { useSession, signIn, signOut } from "next-auth/react";
+
+export function AuthButton() {
+  const { data: session, status } = useSession();
+
+  if (status === "loading") {
+    return <div>Loading...</div>;
+  }
+
+  if (session) {
+    return (
+      <div>
+        <p>{session.user.name}</p>
+        <button onClick={() => signOut()}>Sign Out</button>
+      </div>
+    );
+  }
+
+  return <button onClick={() => signIn()}>Sign In</button>;
+}
+```
+
+### tRPC Context
+
+```typescript
+// In tRPC procedures
+.query(async ({ ctx }) => {
+  // session is available in context
+  const user = ctx.session?.user;
+
+  if (!user) {
+    throw new TRPCError({ code: "UNAUTHORIZED" });
+  }
+
+  return { userId: user.id, coins: user.coin };
+});
+```
+
+## Session Object
+
+Extended session includes custom properties:
+
+```typescript
+// Type definition
+interface Session {
+  user: {
+    id: string;
+    name: string | null;
+    email: string;
+    image: string | null;
+    coin: number;           // Custom: coin balance
+    role: UserRole;         // Custom: user role
+  };
+  expires: string;
+}
+
+// Usage
+session.user.coin  // 100
+session.user.role  // "creator"
+```
+
+## User Roles
+
+| Role | Code | Description |
+|------|------|-------------|
+| Regular User | `user` | Default role, can read and purchase |
+| Creator | `creator` | Can publish content |
+| Creator Assistant | `creator_assistance` | Delegated creator permissions |
+| Admin | `admin` | Platform administrator |
+| Super Admin | `super_admin` | Full administrative access |
+
+## Authentication Flow
+
+### Sign Up Flow
+
+```
+1. User visits /signup
+2. Fills registration form
+3. Password hashed with bcrypt
+4. User created in database
+5. Auto sign-in via credentials
+6. Redirect to homepage
+```
+
+### Sign In Flow (Credentials)
+
+```
+1. User visits /signin
+2. Enters email + password
+3. NextAuth verifies credentials
+4. Session created in database
+5. Session cookie set
+6. Redirect to callback URL
+```
+
+### Sign In Flow (Google)
+
+```
+1. User clicks "Sign in with Google"
+2. Redirect to Google OAuth
+3. User authorizes
+4. Callback to /api/auth/callback/google
+5. User created/linked in database
+6. Session created
+7. Redirect to homepage
+```
+
+### Sign Out Flow
+
+```
+1. User clicks sign out
+2. Session deleted from database
+3. Cookie cleared
+4. Redirect to homepage
+```
+
+## Protected Routes
+
+### Layout-Level Protection
+
+```typescript
+// src/app/admin/layout.tsx
+import { auth } from "~/server/auth";
+import { redirect } from "next/navigation";
+
+export default async function AdminLayout({ children }) {
+  const session = await auth();
+
+  if (!session?.user) {
+    redirect("/signin?callbackUrl=/admin");
+  }
+
+  if (!["admin", "super_admin"].includes(session.user.role)) {
+    redirect("/");
+  }
+
+  return <>{children}</>;
+}
+```
+
+### Component-Level Protection
+
+```typescript
+import { auth } from "~/server/auth";
+
+export default async function ProtectedPage() {
+  const session = await auth();
+
+  if (!session) {
+    return <LoginPrompt />;
+  }
+
+  return <ProtectedContent user={session.user} />;
+}
+```
+
+### API-Level Protection
+
+```typescript
+// Using tRPC procedures
+protectedProcedure  // Requires authentication
+adminProcedure      // Requires admin role
+creatorProcedure    // Requires creator role
+```
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="Auth Providers" icon="key" href="/developer-guide/auth-providers">
+    Google OAuth and credentials setup
+  </Card>
+  <Card title="Session Handling" icon="user" href="/developer-guide/auth-session">
+    Session management and callbacks
+  </Card>
+  <Card title="User Roles" icon="shield" href="/developer-guide/auth-roles">
+    Role-based access control
+  </Card>
+</CardGroup>

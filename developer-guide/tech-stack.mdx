@@ -1,0 +1,259 @@
+---
+title: "Tech Stack"
+description: "Complete technology breakdown for Lovertoon"
+---
+
+## Overview
+
+Lovertoon is built on the **T3 Stack** (create-t3-app v7.39.3), a modern full-stack TypeScript framework optimized for type safety and developer experience.
+
+## Core Framework
+
+### Next.js 15.5.9
+
+- **App Router**: Modern routing with React Server Components
+- **Turbopack**: Fast development builds
+- **Server Components**: Reduced client-side JavaScript
+- **Server Actions**: Direct server mutations (though tRPC is preferred)
+
+### TypeScript
+
+- **Strict Mode**: Enabled with `noUncheckedIndexedAccess`
+- **Target**: ES2022
+- **Module Resolution**: Bundler (modern)
+- **JSX**: React (preserve for Next.js)
+
+## API Layer
+
+### tRPC 11.0.0
+
+Type-safe RPC (Remote Procedure Call) framework replacing traditional REST APIs.
+
+```typescript
+// Server-side procedure
+export const comicRouter = createTRPCRouter({
+  getById: publicProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ ctx, input }) => {
+      return ctx.db.query.lovertoonComics.findFirst({
+        where: eq(comics.id, input.id),
+      });
+    }),
+});
+
+// Client-side usage (Server Component)
+const comic = await api.comic.getById.query({ id: 1 });
+
+// Client-side usage (Client Component)
+const { data } = api.comic.getById.useQuery({ id: 1 });
+```
+
+### SuperJSON
+
+Automatic serialization for complex data types:
+- Dates
+- Maps and Sets
+- BigInts
+- undefined values
+- Regular expressions
+
+## Database
+
+### PostgreSQL
+
+Primary database for all application data.
+
+### Drizzle ORM 0.41.0
+
+Modern TypeScript ORM with:
+- Type-safe queries
+- Schema-as-code
+- Automatic migrations
+- Relational query builder
+
+```typescript
+// Schema definition
+export const comics = createTable("comic", (d) => ({
+  id: d.integer().primaryKey().generatedByDefaultAsIdentity(),
+  name: d.varchar({ length: 256 }).notNull(),
+  slug: d.varchar({ length: 256 }).notNull().unique(),
+  status: d.varchar({ length: 50 }).default("draft"),
+}));
+
+// Query example
+const activeComics = await db.query.lovertoonComics.findMany({
+  where: eq(comics.status, "active"),
+  with: { categories: true, creator: true },
+});
+```
+
+## Authentication
+
+### NextAuth.js 5.0.0-beta
+
+Authentication with multiple providers:
+
+| Provider | Method |
+|----------|--------|
+| Google | OAuth 2.0 |
+| Credentials | Email + Password (bcrypt) |
+
+Features:
+- Database sessions (not JWT-only)
+- Extended session with coin balance and role
+- Drizzle adapter for database storage
+
+## Payments
+
+### Stripe 18.4.0
+
+Complete payment integration:
+
+| Feature | Implementation |
+|---------|---------------|
+| Coin Purchases | Stripe Checkout |
+| Webhook Events | Idempotent processing |
+| Creator Payouts | Stripe Connect (planned) |
+
+## File Storage
+
+### Cloudflare R2
+
+S3-compatible object storage:
+- Presigned URLs for secure uploads
+- CDN delivery via custom domain
+- Multiple upload endpoints (covers, banners, content)
+
+```typescript
+const uploadEndpoints = {
+  comicCoverUploader: { maxFileSize: 4MB, maxFileCount: 1 },
+  chapterContentUploader: { maxFileSize: 8MB, maxFileCount: 100 },
+  profileImageUploader: { maxFileSize: 2MB, maxFileCount: 1 },
+};
+```
+
+## UI Framework
+
+### Tailwind CSS 4.0
+
+Utility-first CSS framework with:
+- Custom design tokens
+- Dark mode support
+- Responsive utilities
+
+### Radix UI
+
+Unstyled, accessible UI primitives:
+- Dialog, Dropdown, Tooltip
+- Accordion, Tabs, Select
+- Full keyboard navigation
+
+### shadcn/ui (New York style)
+
+Pre-built components combining Radix + Tailwind:
+- Button, Card, Input, Form
+- Table, DataTable with sorting/filtering
+- Toast notifications
+
+## Email
+
+### Resend
+
+Transactional email service:
+- Password reset OTPs
+- Welcome emails
+- Notification delivery
+
+## Form Handling
+
+### React Hook Form
+
+Performant form library:
+- Minimal re-renders
+- Built-in validation
+- Zod integration via `@hookform/resolvers`
+
+```typescript
+const form = useForm<ComicFormValues>({
+  resolver: zodResolver(createComicSchema),
+  defaultValues: { name: "", status: "draft" },
+});
+```
+
+## State Management
+
+| Type | Solution |
+|------|----------|
+| Server State | TanStack Query (via tRPC) |
+| Client State | React Context |
+| Form State | React Hook Form |
+| URL State | Next.js routing/searchParams |
+
+## Development Tools
+
+### Bun
+
+JavaScript runtime and package manager:
+- Fast installation
+- Native TypeScript support
+- Compatible with npm ecosystem
+
+### ESLint
+
+Linting with custom rules:
+- Drizzle plugin (enforces WHERE clauses)
+- No misused promises
+- TypeScript-aware rules
+
+### Prettier
+
+Code formatting with consistent style.
+
+## Package Overview
+
+### Dependencies
+
+```json
+{
+  "next": "15.2.3",
+  "@trpc/server": "11.0.0",
+  "@trpc/client": "11.0.0",
+  "@trpc/react-query": "11.0.0",
+  "drizzle-orm": "0.41.0",
+  "next-auth": "5.0.0-beta.25",
+  "stripe": "18.4.0",
+  "@aws-sdk/client-s3": "3.x",
+  "zod": "3.24.2",
+  "tailwindcss": "4.0.0",
+  "@radix-ui/*": "latest",
+  "react-hook-form": "7.x",
+  "superjson": "2.2.2"
+}
+```
+
+### Dev Dependencies
+
+```json
+{
+  "typescript": "5.7.3",
+  "drizzle-kit": "0.30.4",
+  "eslint": "9.x",
+  "prettier": "3.x",
+  "@types/node": "22.x",
+  "@types/react": "19.x"
+}
+```
+
+## Version Compatibility
+
+<Warning>
+This project uses Next.js 15 with React 19 and NextAuth v5 beta. Some packages may have compatibility considerations.
+</Warning>
+
+| Package | Version | Notes |
+|---------|---------|-------|
+| Next.js | 15.x | App Router only |
+| React | 19.x | Server Components |
+| NextAuth | 5.0.0-beta | Breaking changes from v4 |
+| tRPC | 11.x | New API from v10 |
+| Drizzle | 0.41.x | Stable |

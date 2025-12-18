@@ -1,0 +1,392 @@
+---
+title: "Contributing"
+description: "Guidelines for contributing to Lovertoon"
+---
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js 20+ or Bun
+- Docker (for PostgreSQL)
+- Git
+
+### Setup
+
+<Steps>
+  <Step title="Clone Repository">
+    ```bash
+    git clone https://github.com/your-org/lovertoon.git
+    cd lovertoon
+    ```
+  </Step>
+  <Step title="Install Dependencies">
+    ```bash
+    bun install
+    ```
+  </Step>
+  <Step title="Configure Environment">
+    ```bash
+    cp .env.example .env
+    # Edit .env with your values
+    ```
+  </Step>
+  <Step title="Start Database">
+    ```bash
+    ./start-database.sh
+    ```
+  </Step>
+  <Step title="Run Migrations">
+    ```bash
+    bun run db:push
+    ```
+  </Step>
+  <Step title="Start Development Server">
+    ```bash
+    bun run dev
+    ```
+  </Step>
+</Steps>
+
+## Development Workflow
+
+### Branch Strategy
+
+```
+main (production)
+  │
+  ├── develop (staging)
+  │     │
+  │     ├── feature/user-auth
+  │     ├── feature/payment-system
+  │     ├── fix/login-bug
+  │     └── chore/update-deps
+  │
+  └── hotfix/critical-fix
+```
+
+### Branch Naming
+
+| Type | Format | Example |
+|------|--------|---------|
+| Feature | `feature/description` | `feature/user-dashboard` |
+| Bug Fix | `fix/description` | `fix/login-redirect` |
+| Hotfix | `hotfix/description` | `hotfix/payment-error` |
+| Chore | `chore/description` | `chore/update-deps` |
+
+### Creating a Feature
+
+```bash
+# Create and switch to feature branch
+git checkout -b feature/my-feature develop
+
+# Make changes and commit
+git add .
+git commit -m "feat: add new feature"
+
+# Push to remote
+git push -u origin feature/my-feature
+
+# Create pull request to develop
+```
+
+## Commit Messages
+
+### Format
+
+```
+<type>(<scope>): <subject>
+
+<body>
+
+<footer>
+```
+
+### Types
+
+| Type | Description |
+|------|-------------|
+| `feat` | New feature |
+| `fix` | Bug fix |
+| `docs` | Documentation |
+| `style` | Formatting (no code change) |
+| `refactor` | Code refactoring |
+| `perf` | Performance improvement |
+| `test` | Adding tests |
+| `chore` | Build/tooling changes |
+
+### Examples
+
+```bash
+# Feature
+feat(auth): add Google OAuth login
+
+# Bug fix
+fix(payment): handle Stripe webhook timeout
+
+# Documentation
+docs(readme): add deployment instructions
+
+# With scope
+feat(comic): add chapter sorting
+
+# With body
+fix(api): correct pagination offset
+
+The offset was calculated incorrectly when page > 1.
+This caused duplicate items to appear on subsequent pages.
+
+Fixes #123
+```
+
+## Code Review Process
+
+### Before Submitting
+
+1. **Run all checks**:
+   ```bash
+   bun run check
+   ```
+
+2. **Test your changes**:
+   - Manual testing in browser
+   - Check mobile responsiveness
+   - Verify Thai language display
+
+3. **Update documentation** if needed
+
+### Pull Request Template
+
+```markdown
+## Description
+Brief description of changes
+
+## Type of Change
+- [ ] Bug fix
+- [ ] New feature
+- [ ] Breaking change
+- [ ] Documentation update
+
+## Testing
+- [ ] Tested locally
+- [ ] Added/updated tests
+- [ ] Checked on mobile
+
+## Screenshots
+(if applicable)
+
+## Related Issues
+Fixes #(issue number)
+```
+
+### Review Checklist
+
+Reviewers check for:
+- [ ] Code follows project conventions
+- [ ] No TypeScript errors
+- [ ] No ESLint warnings
+- [ ] Appropriate error handling
+- [ ] Thai language messages correct
+- [ ] No console.log statements
+- [ ] Drizzle queries have WHERE clauses
+
+## Testing
+
+### Manual Testing
+
+```bash
+# Start dev server
+bun run dev
+
+# Open browser
+open http://localhost:3000
+```
+
+### Type Checking
+
+```bash
+bun run typecheck
+```
+
+### Linting
+
+```bash
+# Check
+bun run lint
+
+# Fix
+bun run lint:fix
+```
+
+### Database
+
+```bash
+# Open Drizzle Studio
+bun run db:studio
+```
+
+## Adding New Features
+
+### Adding a tRPC Router
+
+<Steps>
+  <Step title="Create Router File">
+    ```typescript
+    // src/server/api/routers/newFeature.ts
+    import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
+
+    export const newFeatureRouter = createTRPCRouter({
+      // Add procedures
+    });
+    ```
+  </Step>
+  <Step title="Register in Root Router">
+    ```typescript
+    // src/server/api/root.ts
+    import { newFeatureRouter } from "./routers/newFeature";
+
+    export const appRouter = createTRPCRouter({
+      // ...existing routers
+      newFeature: newFeatureRouter,
+    });
+    ```
+  </Step>
+</Steps>
+
+### Adding a Database Table
+
+<Steps>
+  <Step title="Define Schema">
+    ```typescript
+    // src/server/db/schema.ts
+    export const newTable = createTable("new_table", (d) => ({
+      id: d.integer().primaryKey().generatedByDefaultAsIdentity(),
+      name: d.varchar({ length: 255 }).notNull(),
+      createdAt: d.timestamp({ withTimezone: true }).default(sql`CURRENT_TIMESTAMP`),
+    }));
+    ```
+  </Step>
+  <Step title="Generate Migration">
+    ```bash
+    bun run db:generate
+    ```
+  </Step>
+  <Step title="Apply Migration">
+    ```bash
+    bun run db:migrate
+    ```
+  </Step>
+</Steps>
+
+### Adding a Page
+
+<Steps>
+  <Step title="Create Page File">
+    ```typescript
+    // src/app/(home)/new-page/page.tsx
+    export default function NewPage() {
+      return <div>New Page</div>;
+    }
+    ```
+  </Step>
+  <Step title="Add Metadata">
+    ```typescript
+    export const metadata = {
+      title: "New Page - Lovertoon",
+      description: "Description here",
+    };
+    ```
+  </Step>
+</Steps>
+
+## Common Tasks
+
+### Adding Environment Variable
+
+1. Add to `src/env.js`
+2. Add to `.env.example`
+3. Add to `.env`
+4. Document in README
+
+### Adding Zod Schema
+
+1. Create in `src/lib/schemas/`
+2. Export type with `z.infer`
+3. Use in tRPC and forms
+
+### Adding UI Component
+
+1. Use shadcn/ui when possible
+2. Place in `src/components/`
+3. Follow existing patterns
+
+## Troubleshooting
+
+### Common Issues
+
+**Build fails with type error**
+```bash
+bun run typecheck
+# Fix the type errors shown
+```
+
+**Database connection error**
+```bash
+# Check if container is running
+docker ps
+
+# Restart if needed
+./start-database.sh
+```
+
+**Missing environment variable**
+```bash
+# Check .env has all required vars
+cat .env
+
+# Compare with example
+diff .env .env.example
+```
+
+### Getting Help
+
+1. Check existing issues
+2. Search documentation
+3. Ask in team chat
+4. Create detailed issue
+
+## Release Process
+
+### Versioning
+
+We follow [Semantic Versioning](https://semver.org/):
+- MAJOR: Breaking changes
+- MINOR: New features
+- PATCH: Bug fixes
+
+### Release Steps
+
+<Steps>
+  <Step title="Update Version">
+    ```bash
+    npm version patch|minor|major
+    ```
+  </Step>
+  <Step title="Create Changelog">
+    Document changes in CHANGELOG.md
+  </Step>
+  <Step title="Merge to Main">
+    Create PR from develop to main
+  </Step>
+  <Step title="Create Release">
+    Tag release on GitHub
+  </Step>
+</Steps>
+
+## Code of Conduct
+
+- Be respectful and inclusive
+- Provide constructive feedback
+- Help others learn
+- Report issues responsibly
+- Follow project guidelines

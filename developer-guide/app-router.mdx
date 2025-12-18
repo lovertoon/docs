@@ -1,0 +1,508 @@
+---
+title: "App Router"
+description: "Next.js App Router structure and patterns"
+---
+
+## Overview
+
+Lovertoon uses Next.js 15 App Router with React Server Components as the default rendering strategy.
+
+## Route Organization
+
+### Route Groups
+
+Routes are organized using route groups (parentheses) that don't affect URLs:
+
+```
+src/app/
+├── (home)/           # Public layout
+│   ├── layout.tsx    # Navbar + Footer
+│   ├── page.tsx      # Homepage (/)
+│   └── comics/       # /comics
+│
+├── (auth)/           # Auth layout
+│   ├── layout.tsx    # Minimal (no nav)
+│   ├── signin/       # /signin
+│   └── signup/       # /signup
+│
+├── admin/            # Admin layout
+│   ├── layout.tsx    # Admin sidebar
+│   └── comics/       # /admin/comics
+│
+└── creator/          # Creator layout
+    ├── layout.tsx    # Creator sidebar
+    └── comics/       # /creator/comics
+```
+
+### Route Segments
+
+| Segment | Purpose |
+|---------|---------|
+| `page.tsx` | Route UI |
+| `layout.tsx` | Shared layout |
+| `loading.tsx` | Loading UI |
+| `error.tsx` | Error boundary |
+| `not-found.tsx` | 404 page |
+
+## Server Components
+
+Server Components are the default. They:
+- Run only on the server
+- Can directly access database/APIs
+- Don't increase client bundle size
+- Can't use hooks or browser APIs
+
+```typescript
+// src/app/(home)/comics/[slug]/page.tsx
+import { api } from "~/trpc/server";
+import { notFound } from "next/navigation";
+
+export default async function ComicPage({
+  params
+}: {
+  params: { slug: string }
+}) {
+  const comic = await api.comic.getBySlug.query({ slug: params.slug });
+
+  if (!comic) {
+    notFound();
+  }
+
+  return (
+    <div>
+      <h1>{comic.name}</h1>
+      <p>{comic.description}</p>
+      {/* ChapterList is a Client Component */}
+      <ChapterList comicId={comic.id} />
+    </div>
+  );
+}
+```
+
+## Client Components
+
+Add `"use client"` directive when you need:
+- Event handlers (onClick, onChange)
+- React hooks (useState, useEffect)
+- Browser APIs (localStorage, window)
+- tRPC query/mutation hooks
+
+```typescript
+// src/components/comic/ChapterList.tsx
+"use client";
+
+import { api } from "~/trpc/react";
+import { useState } from "react";
+
+export function ChapterList({ comicId }: { comicId: number }) {
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+
+  const { data: chapters, isLoading } = api.chapter.getByComic.useQuery({
+    comicId,
+    order: sortOrder,
+  });
+
+  if (isLoading) return <div>Loading...</div>;
+
+  return (
+    <div>
+      <button onClick={() => setSortOrder(s => s === "asc" ? "desc" : "asc")}>
+        Toggle Sort
+      </button>
+      {chapters?.map(chapter => (
+        <ChapterCard key={chapter.id} chapter={chapter} />
+      ))}
+    </div>
+  );
+}
+```
+
+## Layouts
+
+### Root Layout
+
+```typescript
+// src/app/layout.tsx
+import "~/styles/globals.css";
+import { TRPCReactProvider } from "~/trpc/react";
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="th">
+      <body>
+        <TRPCReactProvider>{children}</TRPCReactProvider>
+      </body>
+    </html>
+  );
+}
+```
+
+### Public Layout
+
+```typescript
+// src/app/(home)/layout.tsx
+import { Navbar } from "~/components/layout/Navbar";
+import { Footer } from "~/components/layout/Footer";
+
+export default function HomeLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <>
+      <Navbar />
+      <main className="min-h-screen">{children}</main>
+      <Footer />
+    </>
+  );
+}
+```
+
+### Dashboard Layout
+
+```typescript
+// src/app/admin/layout.tsx
+import { auth } from "~/server/auth";
+import { redirect } from "next/navigation";
+import { AdminSidebar } from "~/components/admin/AdminSidebar";
+
+export default async function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const session = await auth();
+
+  if (!session?.user) {
+    redirect("/signin");
+  }
+
+  if (session.user.role !== "admin" && session.user.role !== "super_admin") {
+    redirect("/");
+  }
+
+  return (
+    <div className="flex">
+      <AdminSidebar />
+      <main className="flex-1 p-6">{children}</main>
+    </div>
+  );
+}
+```
+
+## Dynamic Routes
+
+### Single Parameter
+
+```typescript
+// src/app/(home)/comics/[slug]/page.tsx
+// URL: /comics/one-piece
+
+export default async function ComicPage({
+  params,
+}: {
+  params: { slug: string };
+}) {
+  const { slug } = params;
+  // slug = "one-piece"
+}
+```
+
+### Multiple Parameters
+
+```typescript
+// src/app/(home)/comics/[slug]/[chapterId]/page.tsx
+// URL: /comics/one-piece/123
+
+export default async function ChapterPage({
+  params,
+}: {
+  params: { slug: string; chapterId: string };
+}) {
+  const { slug, chapterId } = params;
+  // slug = "one-piece", chapterId = "123"
+}
+```
+
+## Search Params
+
+```typescript
+// src/app/(home)/comics/page.tsx
+// URL: /comics?category=action&page=2
+
+export default async function ComicsPage({
+  searchParams,
+}: {
+  searchParams: { category?: string; page?: string };
+}) {
+  const category = searchParams.category;
+  const page = parseInt(searchParams.page ?? "1");
+
+  const comics = await api.comic.getAll.query({
+    category,
+    page,
+    limit: 20,
+  });
+
+  return <ComicGrid comics={comics} />;
+}
+```
+
+## Loading States
+
+### Page Loading
+
+```typescript
+// src/app/(home)/comics/loading.tsx
+export default function ComicsLoading() {
+  return (
+    <div className="grid grid-cols-4 gap-4">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div key={i} className="h-64 animate-pulse bg-gray-200 rounded" />
+      ))}
+    </div>
+  );
+}
+```
+
+### Suspense Boundaries
+
+```typescript
+import { Suspense } from "react";
+
+export default async function ComicPage({ params }) {
+  const comic = await api.comic.getBySlug.query({ slug: params.slug });
+
+  return (
+    <div>
+      <h1>{comic.name}</h1>
+      <Suspense fallback={<ChaptersSkeleton />}>
+        <ChapterList comicId={comic.id} />
+      </Suspense>
+    </div>
+  );
+}
+```
+
+## Error Handling
+
+### Error Boundary
+
+```typescript
+// src/app/(home)/comics/[slug]/error.tsx
+"use client";
+
+export default function ComicError({
+  error,
+  reset,
+}: {
+  error: Error;
+  reset: () => void;
+}) {
+  return (
+    <div className="text-center py-10">
+      <h2>เกิดข้อผิดพลาด</h2>
+      <p>{error.message}</p>
+      <button onClick={reset}>ลองอีกครั้ง</button>
+    </div>
+  );
+}
+```
+
+### Not Found
+
+```typescript
+// src/app/(home)/comics/[slug]/page.tsx
+import { notFound } from "next/navigation";
+
+export default async function ComicPage({ params }) {
+  const comic = await api.comic.getBySlug.query({ slug: params.slug });
+
+  if (!comic) {
+    notFound();
+  }
+
+  return <ComicDetail comic={comic} />;
+}
+
+// src/app/(home)/comics/[slug]/not-found.tsx
+export default function ComicNotFound() {
+  return (
+    <div className="text-center py-10">
+      <h2>ไม่พบการ์ตูน</h2>
+      <Link href="/comics">กลับหน้าการ์ตูน</Link>
+    </div>
+  );
+}
+```
+
+## API Routes
+
+### tRPC Handler
+
+```typescript
+// src/app/api/trpc/[trpc]/route.ts
+import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
+import { appRouter } from "~/server/api/root";
+import { createTRPCContext } from "~/server/api/trpc";
+
+const handler = (req: Request) =>
+  fetchRequestHandler({
+    endpoint: "/api/trpc",
+    req,
+    router: appRouter,
+    createContext: () => createTRPCContext({ headers: req.headers }),
+  });
+
+export { handler as GET, handler as POST };
+```
+
+### Stripe Webhook
+
+```typescript
+// src/app/api/stripe/webhook/route.ts
+import { headers } from "next/headers";
+import Stripe from "stripe";
+import { handleWebhook } from "~/server/stripe/webhook";
+import { env } from "~/env";
+
+const stripe = new Stripe(env.STRIPE_SECRET_KEY);
+
+export async function POST(req: Request) {
+  const body = await req.text();
+  const signature = headers().get("stripe-signature")!;
+
+  let event: Stripe.Event;
+  try {
+    event = stripe.webhooks.constructEvent(
+      body,
+      signature,
+      env.STRIPE_WEBHOOK_SECRET
+    );
+  } catch (err) {
+    return new Response("Webhook signature verification failed", {
+      status: 400,
+    });
+  }
+
+  await handleWebhook(event);
+  return new Response("OK");
+}
+```
+
+## Metadata
+
+### Static Metadata
+
+```typescript
+// src/app/(home)/comics/page.tsx
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "การ์ตูนทั้งหมด | Lovertoon",
+  description: "อ่านการ์ตูนออนไลน์ฟรี",
+};
+```
+
+### Dynamic Metadata
+
+```typescript
+// src/app/(home)/comics/[slug]/page.tsx
+import type { Metadata } from "next";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: { slug: string };
+}): Promise<Metadata> {
+  const comic = await api.comic.getBySlug.query({ slug: params.slug });
+
+  return {
+    title: `${comic?.name} | Lovertoon`,
+    description: comic?.description,
+    openGraph: {
+      images: [comic?.coverImage ?? "/default-cover.jpg"],
+    },
+  };
+}
+```
+
+## Caching
+
+### Static Generation
+
+```typescript
+// Generate static pages at build time
+export async function generateStaticParams() {
+  const comics = await api.comic.getAll.query();
+
+  return comics.map((comic) => ({
+    slug: comic.slug,
+  }));
+}
+```
+
+### Revalidation
+
+```typescript
+// Revalidate every hour
+export const revalidate = 3600;
+
+// Or force dynamic rendering
+export const dynamic = "force-dynamic";
+```
+
+## Route Patterns
+
+### Protected Routes
+
+```typescript
+// src/app/creator/layout.tsx
+import { auth } from "~/server/auth";
+import { redirect } from "next/navigation";
+
+export default async function CreatorLayout({ children }) {
+  const session = await auth();
+
+  if (!session?.user) {
+    redirect("/signin?callbackUrl=/creator");
+  }
+
+  if (session.user.role !== "creator" &&
+      session.user.role !== "creator_assistance") {
+    redirect("/join-creator");
+  }
+
+  return <>{children}</>;
+}
+```
+
+### Parallel Routes
+
+```typescript
+// src/app/(home)/comics/[slug]/layout.tsx
+export default function ComicLayout({
+  children,
+  comments,
+}: {
+  children: React.ReactNode;
+  comments: React.ReactNode;
+}) {
+  return (
+    <div className="grid grid-cols-3 gap-4">
+      <div className="col-span-2">{children}</div>
+      <div>{comments}</div>
+    </div>
+  );
+}
+
+// src/app/(home)/comics/[slug]/@comments/page.tsx
+export default function CommentsPanel() {
+  return <CommentList />;
+}
+```

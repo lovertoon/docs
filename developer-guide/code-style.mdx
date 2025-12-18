@@ -1,0 +1,443 @@
+---
+title: "Code Style Guide"
+description: "Coding conventions and best practices"
+---
+
+## Overview
+
+This guide documents the coding conventions used in Lovertoon. Following these conventions ensures consistency across the codebase.
+
+## Naming Conventions
+
+### Files and Directories
+
+| Type | Convention | Example |
+|------|------------|---------|
+| Components | kebab-case | `comic-card.tsx` |
+| Pages | kebab-case | `page.tsx`, `layout.tsx` |
+| Utilities | kebab-case | `format-date.ts` |
+| Schemas | kebab-case | `comic.ts` |
+| Constants | kebab-case | `content-type.ts` |
+
+### Code
+
+| Type | Convention | Example |
+|------|------------|---------|
+| Components | PascalCase | `ComicCard`, `UserProfile` |
+| Functions | camelCase | `getComicById`, `formatPrice` |
+| Variables | camelCase | `comicList`, `isLoading` |
+| Constants | SCREAMING_SNAKE_CASE | `MAX_FILE_SIZE` |
+| Types/Interfaces | PascalCase | `UserRole`, `ComicData` |
+| Enums | PascalCase | `ContentType.COMIC` |
+
+### Database
+
+| Type | Convention | Example |
+|------|------------|---------|
+| Tables | snake_case with prefix | `lovertoon_comics` |
+| Columns | camelCase | `createdAt`, `userId` |
+| Foreign Keys | camelCase ending in Id | `creatorId`, `comicId` |
+
+## TypeScript
+
+### Type Imports
+
+Always use type-only imports:
+
+```typescript
+// Good
+import type { User, Session } from "./types";
+import { type Config, getData } from "./utils";
+
+// Bad
+import { User, Session } from "./types";
+```
+
+### Type Inference
+
+Prefer inference when types are obvious:
+
+```typescript
+// Good - type is obvious
+const count = 0;
+const name = "Lovertoon";
+const items = [1, 2, 3];
+
+// Good - explicit when needed
+const config: AppConfig = getConfig();
+function process(data: unknown): ProcessedData { ... }
+
+// Bad - unnecessary annotation
+const count: number = 0;
+const name: string = "Lovertoon";
+```
+
+### Union Types
+
+Use discriminated unions:
+
+```typescript
+// Good
+type Result =
+  | { success: true; data: User }
+  | { success: false; error: string };
+
+// Bad
+type Result = {
+  success: boolean;
+  data?: User;
+  error?: string;
+};
+```
+
+### Null Handling
+
+Be explicit about null/undefined:
+
+```typescript
+// Good
+function findUser(id: string): User | null {
+  return users.find(u => u.id === id) ?? null;
+}
+
+// Bad - implicit undefined
+function findUser(id: string): User | undefined {
+  return users.find(u => u.id === id);
+}
+```
+
+## React Components
+
+### Component Structure
+
+```typescript
+// 1. Imports
+import { useState } from "react";
+import type { ComponentProps } from "./types";
+
+// 2. Types
+interface Props {
+  title: string;
+  onClose: () => void;
+}
+
+// 3. Component
+export function MyComponent({ title, onClose }: Props) {
+  // 3a. Hooks
+  const [isOpen, setIsOpen] = useState(false);
+
+  // 3b. Derived state
+  const displayTitle = title.toUpperCase();
+
+  // 3c. Handlers
+  const handleClick = () => {
+    setIsOpen(true);
+  };
+
+  // 3d. Render
+  return (
+    <div>
+      <h1>{displayTitle}</h1>
+      <button onClick={handleClick}>Open</button>
+    </div>
+  );
+}
+```
+
+### Server vs Client Components
+
+```typescript
+// Server Component (default)
+// src/app/page.tsx
+import { api } from "~/trpc/server";
+
+export default async function Page() {
+  const data = await api.comic.getAll.query();
+  return <ComicList comics={data} />;
+}
+
+// Client Component (when needed)
+// src/components/interactive-button.tsx
+"use client";
+
+import { useState } from "react";
+
+export function InteractiveButton() {
+  const [count, setCount] = useState(0);
+  return <button onClick={() => setCount(c => c + 1)}>{count}</button>;
+}
+```
+
+### Props Destructuring
+
+```typescript
+// Good - destructure in parameter
+export function Card({ title, description, children }: CardProps) {
+  return (
+    <div>
+      <h2>{title}</h2>
+      <p>{description}</p>
+      {children}
+    </div>
+  );
+}
+
+// Bad - destructure in body
+export function Card(props: CardProps) {
+  const { title, description, children } = props;
+  // ...
+}
+```
+
+## tRPC Procedures
+
+### Structure
+
+```typescript
+export const comicRouter = createTRPCRouter({
+  // Query - for reading data
+  getById: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ ctx, input }) => {
+      return ctx.db.query.lovertoonComics.findFirst({
+        where: eq(comics.id, input.id),
+      });
+    }),
+
+  // Mutation - for writing data
+  create: creatorProcedure
+    .input(comicFormSchema)
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.insert(comics).values({
+        ...input,
+        creatorId: ctx.session.user.id,
+      });
+    }),
+});
+```
+
+### Error Handling
+
+```typescript
+.mutation(async ({ ctx, input }) => {
+  const comic = await ctx.db.query.lovertoonComics.findFirst({
+    where: eq(comics.id, input.id),
+  });
+
+  if (!comic) {
+    throw new TRPCError({
+      code: "NOT_FOUND",
+      message: "ไม่พบการ์ตูน", // Thai error message
+    });
+  }
+
+  if (comic.creatorId !== ctx.session.user.id) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "คุณไม่มีสิทธิ์แก้ไขการ์ตูนนี้",
+    });
+  }
+
+  // Proceed with update
+});
+```
+
+## Database Queries
+
+### Drizzle ORM
+
+```typescript
+// Simple query
+const comic = await db.query.lovertoonComics.findFirst({
+  where: eq(comics.id, comicId),
+});
+
+// With relations
+const comic = await db.query.lovertoonComics.findFirst({
+  where: eq(comics.id, comicId),
+  with: {
+    creator: true,
+    categories: true,
+  },
+});
+
+// Update with WHERE (required by ESLint)
+await db.update(comics)
+  .set({ status: "active" })
+  .where(eq(comics.id, comicId));
+
+// Delete with WHERE (required by ESLint)
+await db.delete(comics).where(eq(comics.id, comicId));
+```
+
+### Transactions
+
+```typescript
+await db.transaction(async (tx) => {
+  await tx.update(users)
+    .set({ coin: sql`${users.coin} - ${price}` })
+    .where(eq(users.id, userId));
+
+  await tx.insert(orders).values({
+    userId,
+    chapterId,
+    amount: price,
+  });
+});
+```
+
+## Styling
+
+### Tailwind CSS
+
+```tsx
+// Good - utility classes
+<div className="flex items-center gap-4 p-4 bg-white rounded-lg shadow">
+  <h1 className="text-xl font-bold text-gray-900">Title</h1>
+</div>
+
+// For complex/repeated styles, extract to variable
+const cardStyles = "flex flex-col gap-2 p-4 bg-white rounded-lg shadow";
+```
+
+### Conditional Classes
+
+```tsx
+import { cn } from "~/lib/utils";
+
+<button
+  className={cn(
+    "px-4 py-2 rounded",
+    isActive ? "bg-primary text-white" : "bg-gray-100",
+    isDisabled && "opacity-50 cursor-not-allowed"
+  )}
+>
+  Click
+</button>
+```
+
+## Language
+
+### Thai Text
+
+- All user-facing text in Thai
+- Error messages in Thai
+- Form validation in Thai
+
+```typescript
+// Validation messages
+z.string().min(1, "กรุณากรอกข้อมูล")
+
+// Error messages
+throw new TRPCError({
+  code: "NOT_FOUND",
+  message: "ไม่พบข้อมูล",
+});
+
+// UI text
+<button>เข้าสู่ระบบ</button>
+```
+
+### English Text
+
+- Code comments in English
+- Variable names in English
+- Git commits in English
+
+## Imports Order
+
+```typescript
+// 1. External libraries
+import { useState, useEffect } from "react";
+import { z } from "zod";
+
+// 2. Internal absolute imports (~/...)
+import { api } from "~/trpc/react";
+import { Button } from "~/components/ui/button";
+import type { User } from "~/server/db/schema";
+
+// 3. Relative imports
+import { ComicCard } from "./comic-card";
+import type { Props } from "./types";
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Keep Components Small">
+    Extract components when they exceed ~100 lines or have distinct responsibilities.
+  </Accordion>
+
+  <Accordion title="Avoid any">
+    Use `unknown` for truly unknown types, and add type guards.
+  </Accordion>
+
+  <Accordion title="Handle Loading States">
+    Always show loading indicators for async operations.
+  </Accordion>
+
+  <Accordion title="Handle Errors">
+    Provide clear, Thai error messages for user-facing errors.
+  </Accordion>
+
+  <Accordion title="Use Server Components">
+    Default to Server Components. Only use Client Components when interactivity is needed.
+  </Accordion>
+
+  <Accordion title="No Console.log">
+    Remove console.log before committing. Use proper logging in production.
+  </Accordion>
+</AccordionGroup>
+
+## Anti-Patterns
+
+### Avoid
+
+```typescript
+// Bad - any type
+const data: any = fetchData();
+
+// Bad - unused variables
+const { id, name, description } = props;
+// only using id
+
+// Bad - nested ternaries
+const result = a ? b : c ? d : e ? f : g;
+
+// Bad - long functions
+function doEverything() {
+  // 200+ lines
+}
+
+// Bad - magic numbers
+if (coins < 100) { ... }
+
+// Bad - console.log in production
+console.log("debug", data);
+```
+
+### Prefer
+
+```typescript
+// Good - proper typing
+const data = await fetchData() as UserData;
+
+// Good - only destructure what you use
+const { id } = props;
+
+// Good - extracted conditions
+const isValid = condition1 && condition2;
+const result = isValid ? valueA : valueB;
+
+// Good - small focused functions
+function validateInput() { ... }
+function processData() { ... }
+function saveResult() { ... }
+
+// Good - named constants
+const MIN_COIN_BALANCE = 100;
+if (coins < MIN_COIN_BALANCE) { ... }
+
+// Good - no console.log
+// Use proper logging or error tracking
+```

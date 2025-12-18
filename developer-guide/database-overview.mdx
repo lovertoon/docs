@@ -1,0 +1,331 @@
+---
+title: "Database Overview"
+description: "PostgreSQL database architecture with Drizzle ORM"
+---
+
+## Overview
+
+Lovertoon uses PostgreSQL as the primary database, accessed through Drizzle ORM for type-safe queries and schema management.
+
+## Technology Stack
+
+| Component | Technology |
+|-----------|------------|
+| Database | PostgreSQL 16+ |
+| ORM | Drizzle ORM 0.41.0 |
+| Migrations | Drizzle Kit |
+| Client | `postgres` package |
+
+## Database Architecture
+
+### Table Prefix
+
+All tables use the `lovertoon_` prefix for multi-project schema support:
+
+```typescript
+export const createTable = pgTableCreator((name) => `lovertoon_${name}`);
+
+// Creates: lovertoon_comic, lovertoon_user, etc.
+```
+
+### Schema Organization
+
+The schema (~1500 lines in `src/server/db/schema.ts`) is organized by domain:
+
+```
+Database Tables
+├── Users & Authentication
+│   ├── users
+│   ├── accounts (OAuth)
+│   ├── sessions
+│   ├── verification_tokens
+│   └── password_reset_tokens
+│
+├── Creator System
+│   ├── creators (applications)
+│   ├── creator_follows
+│   ├── creator_assistants
+│   ├── assistant_invitations
+│   ├── creator_stripe_accounts
+│   └── creator_passes
+│
+├── Content Management
+│   ├── comics
+│   ├── chapters
+│   ├── categories
+│   ├── comic_categories (junction)
+│   └── comments
+│
+├── User Engagement
+│   ├── user_favorites
+│   ├── chapter_views
+│   └── creator_comment_views
+│
+├── Monetization
+│   ├── orders
+│   ├── topups
+│   ├── payouts
+│   ├── stripe_webhook_events
+│   └── user_passes
+│
+├── Promotion System
+│   ├── promotions
+│   ├── promotion_periods
+│   ├── promotion_bids
+│   ├── promotion_settings
+│   ├── promotion_transactions
+│   ├── promotion_notifications
+│   └── hot_story_promotions
+│
+└── Free Reading Codes
+    ├── free_reading_codes
+    └── free_reading_code_settings
+```
+
+## Entity Relationships
+
+### Core Content Model
+
+```
+users (1) ─────── creates ─────── (N) comics
+                                      │
+                                      ├── (N) chapters
+                                      │       │
+                                      │       └── (N) comments
+                                      │
+                                      └── (N) comic_categories ─── (N) categories
+```
+
+### User Interactions
+
+```
+users (N) ─── favorites ─── (N) comics
+      │
+      ├── (N) orders ─── purchases ─── (N) chapters
+      │
+      ├── (N) chapter_views ─── tracks reading ─── (N) chapters
+      │
+      └── (N) comments ─── on ─── (N) chapters
+```
+
+### Creator Economy
+
+```
+users (1) ─── applies ─── (1) creators
+      │                        │
+      │                        ├── bank info (for payouts)
+      │                        │
+      │                        └── (1) creator_stripe_accounts
+      │
+      ├── (N) payouts
+      │
+      └── (N) orders ─── generates revenue ─── creators
+```
+
+## Connection Management
+
+### Database Client
+
+```typescript
+// src/server/db/index.ts
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import * as schema from "./schema";
+
+const client = postgres(process.env.DATABASE_URL);
+export const db = drizzle(client, { schema });
+```
+
+### tRPC Context
+
+Every tRPC procedure receives the database client:
+
+```typescript
+// src/server/api/trpc.ts
+export const createTRPCContext = async (opts: { headers: Headers }) => {
+  const session = await auth();
+  return {
+    db,      // Drizzle client
+    session, // User session
+    ...opts,
+  };
+};
+```
+
+## Common Patterns
+
+### Primary Keys
+
+Auto-incrementing integers for most tables:
+
+```typescript
+id: d.integer().primaryKey().generatedByDefaultAsIdentity()
+```
+
+UUID for users (for NextAuth compatibility):
+
+```typescript
+id: d.varchar({ length: 255 }).primaryKey().$defaultFn(() => crypto.randomUUID())
+```
+
+### Timestamps
+
+Standard timestamp fields:
+
+```typescript
+createdAt: d
+  .timestamp({ withTimezone: true })
+  .default(sql`CURRENT_TIMESTAMP`)
+  .notNull(),
+
+updatedAt: d.timestamp({ withTimezone: true }).$onUpdate(() => new Date())
+```
+
+### Soft Deletes
+
+Status-based soft deletes:
+
+```typescript
+status: d.varchar({ length: 50 }).default("draft") // draft, active, deleted
+```
+
+### Foreign Keys
+
+With cascade delete:
+
+```typescript
+userId: d
+  .varchar({ length: 255 })
+  .notNull()
+  .references(() => users.id, { onDelete: "cascade" })
+```
+
+### Indexes
+
+For query optimization:
+
+```typescript
+(t) => [
+  index("comic_slug_idx").on(t.slug),
+  index("comic_status_idx").on(t.status),
+  index("comic_created_by_idx").on(t.createdById),
+]
+```
+
+## Type Exports
+
+Every table exports inferred types:
+
+```typescript
+// Select type (reading from DB)
+export type Comic = typeof comics.$inferSelect;
+
+// Insert type (writing to DB)
+export type NewComic = typeof comics.$inferInsert;
+
+// Extended type with relations
+export type Comic = typeof comics.$inferSelect & {
+  chapters?: Chapter[];
+  categories?: ComicCategory[];
+  createdBy?: User;
+};
+```
+
+## Relations
+
+Drizzle relations for type-safe joins:
+
+```typescript
+export const comicsRelations = relations(comics, ({ many, one }) => ({
+  // One-to-many
+  chapters: many(chapters),
+  comments: many(comments),
+
+  // Many-to-many via junction
+  categories: many(comicCategories),
+
+  // Many-to-one
+  createdBy: one(users, {
+    fields: [comics.createdById],
+    references: [users.id],
+  }),
+}));
+```
+
+## Enum-like Types
+
+Using varchar with TypeScript types:
+
+```typescript
+// In schema
+status: d.varchar({ length: 20 }).notNull().default("pending")
+
+// Type definition
+export type CreatorStatus = "pending" | "approved" | "declined" | "inactive";
+
+// Usage
+const creator = await db.query.lovertoonCreators.findFirst({
+  where: eq(creators.status, "approved"),
+});
+```
+
+## Database Tools
+
+### Drizzle Studio
+
+Visual database browser:
+
+```bash
+bun run db:studio
+# Opens at http://localhost:4983
+```
+
+### Direct SQL
+
+Using the `sql` helper:
+
+```typescript
+import { sql } from "drizzle-orm";
+
+// Raw SQL in queries
+const result = await db.execute(sql`
+  SELECT COUNT(*) FROM lovertoon_comics WHERE status = 'active'
+`);
+
+// SQL in updates
+await db.update(users)
+  .set({
+    coin: sql`${users.coin} + ${amount}`,
+  })
+  .where(eq(users.id, userId));
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always Use Transactions">
+    Wrap related operations in transactions to ensure data consistency:
+    ```typescript
+    await db.transaction(async (tx) => {
+      await tx.update(users)...
+      await tx.insert(orders)...
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="Add Indexes for Query Patterns">
+    Index columns used in WHERE, ORDER BY, and JOIN clauses.
+  </Accordion>
+
+  <Accordion title="Use Appropriate Column Types">
+    - `varchar` for bounded strings
+    - `text` for unlimited text
+    - `integer` for whole numbers
+    - `doublePrecision` for decimals
+    - `timestamp` for dates (always with timezone)
+  </Accordion>
+
+  <Accordion title="Define Relations">
+    Always define relations for tables that will be queried together.
+  </Accordion>
+</AccordionGroup>

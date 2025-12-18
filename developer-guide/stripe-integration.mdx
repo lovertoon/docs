@@ -1,0 +1,402 @@
+---
+title: "Stripe Integration"
+description: "Payment processing with Stripe"
+---
+
+## Overview
+
+Lovertoon uses Stripe for all payment processing:
+- **Coin Purchases**: Stripe Checkout for buying virtual currency
+- **Webhook Events**: Idempotent handling of payment confirmations
+- **Creator Payouts**: Stripe Connect for paying creators (planned)
+
+## Configuration
+
+### Environment Variables
+
+```bash
+STRIPE_SECRET_KEY="sk_test_..."
+STRIPE_WEBHOOK_SECRET="whsec_..."
+STRIPE_PUBLISHABLE_KEY="pk_test_..." # If needed client-side
+```
+
+### Stripe Client
+
+```typescript
+// Usage in server code
+import Stripe from "stripe";
+import { env } from "~/env";
+
+const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
+  apiVersion: "2024-12-18.acacia",
+});
+```
+
+## Coin Purchase Flow
+
+### 1. User Initiates Purchase
+
+```typescript
+// User selects coin package on /topup page
+const packages = [
+  { coins: 100, price: 35 },
+  { coins: 300, price: 99 },
+  { coins: 500, price: 159 },
+  { coins: 1000, price: 299 },
+];
+```
+
+### 2. Create Checkout Session
+
+```typescript
+// src/server/api/routers/stripe.ts
+export const stripeRouter = createTRPCRouter({
+  createCheckoutSession: protectedProcedure
+    .input(z.object({
+      coinAmount: z.number(),
+      price: z.number(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { coinAmount, price } = input;
+
+      // Create pending topup record
+      const [topup] = await ctx.db.insert(topups).values({
+        userId: ctx.session.user.id,
+        coinAmount,
+        paymentAmount: price,
+        status: "pending",
+        stripeSessionId: "pending", // Updated after session creation
+      }).returning();
+
+      // Create Stripe Checkout Session
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ["card", "promptpay"],
+        line_items: [
+          {
+            price_data: {
+              currency: "thb",
+              product_data: {
+                name: `${coinAmount} Coins`,
+                description: `เติมเหรียญ ${coinAmount} เหรียญ`,
+              },
+              unit_amount: price * 100, // Stripe uses smallest currency unit
+            },
+            quantity: 1,
+          },
+        ],
+        mode: "payment",
+        success_url: `${env.AUTH_URL}/topup/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${env.AUTH_URL}/topup`,
+        metadata: {
+          userId: ctx.session.user.id,
+          coin: coinAmount.toString(),
+          amount: price.toString(),
+          topupId: topup.id.toString(),
+        },
+      });
+
+      // Update topup with session ID
+      await ctx.db.update(topups)
+        .set({ stripeSessionId: session.id })
+        .where(eq(topups.id, topup.id));
+
+      return { url: session.url };
+    }),
+});
+```
+
+### 3. Redirect to Stripe
+
+```typescript
+"use client";
+import { api } from "~/trpc/react";
+
+export function TopupButton({ coins, price }) {
+  const createCheckout = api.stripe.createCheckoutSession.useMutation({
+    onSuccess: ({ url }) => {
+      if (url) {
+        window.location.href = url; // Redirect to Stripe
+      }
+    },
+  });
+
+  return (
+    <button
+      onClick={() => createCheckout.mutate({ coinAmount: coins, price })}
+      disabled={createCheckout.isPending}
+    >
+      ซื้อ {coins} เหรียญ - ฿{price}
+    </button>
+  );
+}
+```
+
+### 4. Handle Webhook
+
+```typescript
+// src/app/api/stripe/webhook/route.ts
+import { headers } from "next/headers";
+import Stripe from "stripe";
+import { handleWebhook } from "~/server/stripe/webhook";
+import { env } from "~/env";
+
+const stripe = new Stripe(env.STRIPE_SECRET_KEY);
+
+export async function POST(req: Request) {
+  const body = await req.text();
+  const signature = headers().get("stripe-signature")!;
+
+  let event: Stripe.Event;
+
+  try {
+    event = stripe.webhooks.constructEvent(
+      body,
+      signature,
+      env.STRIPE_WEBHOOK_SECRET
+    );
+  } catch (err) {
+    console.error("Webhook signature verification failed");
+    return new Response("Webhook Error", { status: 400 });
+  }
+
+  await handleWebhook(event);
+
+  return new Response("OK");
+}
+```
+
+### 5. Process Payment (Webhook Handler)
+
+```typescript
+// src/server/stripe/webhook.ts
+export async function handleWebhook(event: Stripe.Event) {
+  // Idempotency check - prevent duplicate processing
+  const existingEvent = await db.query.stripeWebhookEvents.findFirst({
+    where: eq(stripeWebhookEvents.id, event.id),
+  });
+
+  if (existingEvent) {
+    console.log("Event already processed:", event.id);
+    return;
+  }
+
+  switch (event.type) {
+    case "checkout.session.completed":
+      const session = event.data.object;
+
+      const userId = session.metadata?.userId;
+      const coinAmount = parseInt(session.metadata?.coin ?? "0");
+
+      if (!userId || !coinAmount) {
+        throw new Error("Missing metadata");
+      }
+
+      await db.transaction(async (tx) => {
+        // Record event as processed
+        await tx.insert(stripeWebhookEvents).values({
+          id: event.id,
+          type: event.type,
+        });
+
+        // Check if already completed
+        const existingTopup = await tx.query.lovertoonTopups.findFirst({
+          where: and(
+            eq(topups.stripeSessionId, session.id),
+            eq(topups.status, "completed"),
+          ),
+        });
+
+        if (existingTopup) {
+          return; // Already processed
+        }
+
+        // Update topup status
+        await tx.update(topups)
+          .set({
+            status: "completed",
+            stripePaymentIntentId: session.payment_intent as string,
+            stripeEventId: event.id,
+            completedAt: new Date(),
+          })
+          .where(eq(topups.stripeSessionId, session.id));
+
+        // Credit coins to user
+        await tx.update(users)
+          .set({ coin: sql`${users.coin} + ${coinAmount}` })
+          .where(eq(users.id, userId));
+      });
+
+      break;
+
+    case "payment_intent.payment_failed":
+      // Handle failed payment
+      const failedPayment = event.data.object;
+
+      await db.update(topups)
+        .set({ status: "failed" })
+        .where(eq(topups.stripePaymentIntentId, failedPayment.id));
+
+      break;
+  }
+}
+```
+
+## Idempotency
+
+Webhooks can be delivered multiple times. The system handles this with:
+
+### Event Tracking
+
+```typescript
+// Store processed events
+export const stripeWebhookEvents = createTable("stripe_webhook_event", (d) => ({
+  id: d.varchar({ length: 255 }).primaryKey(), // Stripe event ID
+  type: d.varchar({ length: 100 }).notNull(),
+  processedAt: d.timestamp({ withTimezone: true }).default(sql`CURRENT_TIMESTAMP`),
+}));
+```
+
+### Duplicate Check
+
+```typescript
+// Check before processing
+const existingEvent = await db.query.stripeWebhookEvents.findFirst({
+  where: eq(stripeWebhookEvents.id, event.id),
+});
+
+if (existingEvent) {
+  return; // Skip duplicate
+}
+```
+
+### Status Check
+
+```typescript
+// Also check topup status
+const completedTopup = await tx.query.lovertoonTopups.findFirst({
+  where: and(
+    eq(topups.stripeSessionId, session.id),
+    eq(topups.status, "completed"),
+  ),
+});
+
+if (completedTopup) {
+  return; // Already credited
+}
+```
+
+## Local Development
+
+### Install Stripe CLI
+
+```bash
+brew install stripe/stripe-cli/stripe
+```
+
+### Login and Forward Webhooks
+
+```bash
+# Login to your Stripe account
+stripe login
+
+# Forward webhooks to local server
+stripe listen --forward-to localhost:3000/api/stripe/webhook
+```
+
+This outputs a webhook signing secret - add to `.env`:
+
+```bash
+STRIPE_WEBHOOK_SECRET="whsec_..."
+```
+
+### Test Events
+
+```bash
+# Trigger test event
+stripe trigger checkout.session.completed
+
+# View recent events
+stripe events list --limit 5
+
+# View logs
+stripe logs tail
+```
+
+## Test Cards
+
+| Number | Description |
+|--------|-------------|
+| 4242 4242 4242 4242 | Successful payment |
+| 4000 0000 0000 0002 | Card declined |
+| 4000 0025 0000 3155 | Requires 3D Secure |
+| 4000 0000 0000 9995 | Insufficient funds |
+
+Use any future expiry date and any 3-digit CVC.
+
+## Error Handling
+
+```typescript
+// In checkout session creation
+try {
+  const session = await stripe.checkout.sessions.create({...});
+  return { url: session.url };
+} catch (error) {
+  if (error instanceof Stripe.errors.StripeError) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "การชำระเงินล้มเหลว กรุณาลองใหม่",
+    });
+  }
+  throw error;
+}
+```
+
+## Stripe Connect (Planned)
+
+For creator payouts:
+
+```typescript
+// Create Connected Account
+const account = await stripe.accounts.create({
+  type: "express",
+  country: "TH",
+  capabilities: {
+    transfers: { requested: true },
+  },
+});
+
+// Generate onboarding link
+const accountLink = await stripe.accountLinks.create({
+  account: account.id,
+  refresh_url: `${baseUrl}/creator/payout/reauth`,
+  return_url: `${baseUrl}/creator/payout/complete`,
+  type: "account_onboarding",
+});
+
+// Transfer funds to creator
+const transfer = await stripe.transfers.create({
+  amount: amountInSatang,
+  currency: "thb",
+  destination: creatorStripeAccountId,
+});
+```
+
+## Security
+
+<AccordionGroup>
+  <Accordion title="Webhook Verification">
+    Always verify webhook signatures using the signing secret.
+  </Accordion>
+
+  <Accordion title="Server-Side Only">
+    Never expose `STRIPE_SECRET_KEY` to the client.
+  </Accordion>
+
+  <Accordion title="HTTPS Only">
+    Stripe requires HTTPS for webhooks in production.
+  </Accordion>
+
+  <Accordion title="Amount Validation">
+    Always validate amounts on the server, never trust client values.
+  </Accordion>
+</AccordionGroup>

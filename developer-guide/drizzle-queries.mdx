@@ -1,0 +1,538 @@
+---
+title: "Drizzle Queries"
+description: "Query patterns and examples with Drizzle ORM"
+---
+
+## Overview
+
+Drizzle ORM provides two query APIs:
+1. **Query Builder** - SQL-like fluent API
+2. **Relational Queries** - Type-safe relation loading
+
+## Query Builder API
+
+### Select Queries
+
+```typescript
+import { eq, and, or, like, desc, asc, sql } from "drizzle-orm";
+import { comics, chapters, users } from "~/server/db/schema";
+
+// Basic select
+const allComics = await db.select().from(comics);
+
+// Select specific columns
+const names = await db
+  .select({ id: comics.id, name: comics.name })
+  .from(comics);
+
+// With conditions
+const activeComics = await db
+  .select()
+  .from(comics)
+  .where(eq(comics.status, "active"));
+
+// Multiple conditions
+const filteredComics = await db
+  .select()
+  .from(comics)
+  .where(
+    and(
+      eq(comics.status, "active"),
+      eq(comics.isAdult, false),
+      eq(comics.contentType, "comic")
+    )
+  );
+
+// OR conditions
+const featured = await db
+  .select()
+  .from(comics)
+  .where(
+    or(
+      eq(comics.showHomeBanner, true),
+      eq(comics.showHomeCover, true)
+    )
+  );
+
+// Pattern matching
+const searchResults = await db
+  .select()
+  .from(comics)
+  .where(like(comics.name, `%${searchTerm}%`));
+
+// Ordering
+const latestComics = await db
+  .select()
+  .from(comics)
+  .orderBy(desc(comics.createdAt));
+
+// Pagination
+const page = await db
+  .select()
+  .from(comics)
+  .limit(20)
+  .offset(40); // Page 3
+```
+
+### Join Queries
+
+```typescript
+// Left join
+const comicsWithCreators = await db
+  .select({
+    comic: comics,
+    creator: users,
+  })
+  .from(comics)
+  .leftJoin(users, eq(comics.createdById, users.id));
+
+// Inner join
+const purchasedChapters = await db
+  .select({
+    order: orders,
+    chapter: chapters,
+  })
+  .from(orders)
+  .innerJoin(chapters, eq(orders.chapterId, chapters.id))
+  .where(eq(orders.userId, userId));
+
+// Multiple joins
+const orderDetails = await db
+  .select({
+    order: orders,
+    chapter: chapters,
+    comic: comics,
+    user: users,
+  })
+  .from(orders)
+  .leftJoin(chapters, eq(orders.chapterId, chapters.id))
+  .leftJoin(comics, eq(orders.comicId, comics.id))
+  .leftJoin(users, eq(orders.userId, users.id));
+```
+
+### Aggregate Queries
+
+```typescript
+import { count, sum, avg, min, max } from "drizzle-orm";
+
+// Count
+const totalComics = await db
+  .select({ count: count() })
+  .from(comics)
+  .where(eq(comics.status, "active"));
+
+// Sum
+const totalEarnings = await db
+  .select({ total: sum(orders.amount) })
+  .from(orders)
+  .where(eq(orders.userId, creatorId));
+
+// Group by
+const ordersByComic = await db
+  .select({
+    comicId: orders.comicId,
+    totalOrders: count(),
+    totalRevenue: sum(orders.amount),
+  })
+  .from(orders)
+  .groupBy(orders.comicId);
+
+// Having
+const popularComics = await db
+  .select({
+    comicId: orders.comicId,
+    orderCount: count(),
+  })
+  .from(orders)
+  .groupBy(orders.comicId)
+  .having(sql`count(*) > 100`);
+```
+
+### Insert Operations
+
+```typescript
+// Single insert
+const [newComic] = await db
+  .insert(comics)
+  .values({
+    name: "New Comic",
+    slug: "new-comic",
+    createdById: userId,
+  })
+  .returning();
+
+// Multiple insert
+await db.insert(comicCategories).values([
+  { comicId: 1, categoryId: 1 },
+  { comicId: 1, categoryId: 2 },
+]);
+
+// Insert with returning specific columns
+const [{ id }] = await db
+  .insert(comics)
+  .values({ name: "Test", slug: "test", createdById: userId })
+  .returning({ id: comics.id });
+
+// Upsert (insert or update)
+await db
+  .insert(chapterViews)
+  .values({
+    userId,
+    chapterId,
+    comicId,
+  })
+  .onConflictDoUpdate({
+    target: [chapterViews.userId, chapterViews.chapterId],
+    set: {
+      lastViewedAt: new Date(),
+      viewCount: sql`${chapterViews.viewCount} + 1`,
+    },
+  });
+```
+
+### Update Operations
+
+```typescript
+// Basic update
+await db
+  .update(comics)
+  .set({ status: "active" })
+  .where(eq(comics.id, comicId));
+
+// Update with SQL expressions
+await db
+  .update(users)
+  .set({
+    coin: sql`${users.coin} + ${amount}`,
+  })
+  .where(eq(users.id, userId));
+
+// Update with returning
+const [updated] = await db
+  .update(comics)
+  .set({ name: "Updated Name" })
+  .where(eq(comics.id, comicId))
+  .returning();
+
+// Conditional update
+await db
+  .update(orders)
+  .set({ status: "completed" })
+  .where(
+    and(
+      eq(orders.id, orderId),
+      eq(orders.status, "pending")
+    )
+  );
+```
+
+### Delete Operations
+
+```typescript
+// Basic delete
+await db.delete(comments).where(eq(comments.id, commentId));
+
+// Delete with conditions
+await db
+  .delete(chapterViews)
+  .where(
+    and(
+      eq(chapterViews.userId, userId),
+      eq(chapterViews.chapterId, chapterId)
+    )
+  );
+
+// Delete with subquery
+await db.delete(comments).where(
+  eq(
+    comments.comicId,
+    db.select({ id: comics.id }).from(comics).where(eq(comics.slug, slug))
+  )
+);
+```
+
+## Relational Queries API
+
+### Basic Relations
+
+```typescript
+// Find one with relations
+const comic = await db.query.lovertoonComics.findFirst({
+  where: eq(comics.slug, slug),
+  with: {
+    createdBy: true,
+    chapters: true,
+    categories: {
+      with: {
+        category: true,
+      },
+    },
+  },
+});
+
+// Find many with relations
+const allComics = await db.query.lovertoonComics.findMany({
+  where: eq(comics.status, "active"),
+  with: {
+    createdBy: true,
+  },
+  orderBy: [desc(comics.createdAt)],
+  limit: 20,
+});
+```
+
+### Nested Relations
+
+```typescript
+const comic = await db.query.lovertoonComics.findFirst({
+  where: eq(comics.id, comicId),
+  with: {
+    chapters: {
+      with: {
+        comments: {
+          with: {
+            user: true,
+            replies: {
+              with: {
+                user: true,
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+});
+```
+
+### Filtering Relations
+
+```typescript
+const comic = await db.query.lovertoonComics.findFirst({
+  where: eq(comics.id, comicId),
+  with: {
+    chapters: {
+      where: eq(chapters.status, "active"),
+      orderBy: [asc(chapters.order)],
+      limit: 10,
+    },
+    comments: {
+      where: eq(comments.status, "approved"),
+      orderBy: [desc(comments.createdAt)],
+    },
+  },
+});
+```
+
+### Column Selection
+
+```typescript
+const comics = await db.query.lovertoonComics.findMany({
+  columns: {
+    id: true,
+    name: true,
+    slug: true,
+    coverImage: true,
+  },
+  with: {
+    createdBy: {
+      columns: {
+        name: true,
+        image: true,
+      },
+    },
+  },
+});
+```
+
+## Transactions
+
+```typescript
+// Basic transaction
+await db.transaction(async (tx) => {
+  // Deduct coins from user
+  await tx
+    .update(users)
+    .set({ coin: sql`${users.coin} - ${price}` })
+    .where(eq(users.id, userId));
+
+  // Create order
+  await tx.insert(orders).values({
+    userId,
+    comicId,
+    chapterId,
+    amount: price,
+  });
+});
+
+// Transaction with rollback
+await db.transaction(async (tx) => {
+  const [user] = await tx
+    .select({ coin: users.coin })
+    .from(users)
+    .where(eq(users.id, userId));
+
+  if ((user?.coin ?? 0) < price) {
+    throw new Error("Insufficient coins");
+    // Transaction automatically rolls back
+  }
+
+  // Continue with purchase...
+});
+
+// Nested reads in transaction
+const result = await db.transaction(async (tx) => {
+  const comic = await tx.query.lovertoonComics.findFirst({
+    where: eq(comics.id, comicId),
+  });
+
+  if (!comic) {
+    throw new Error("Comic not found");
+  }
+
+  const [updated] = await tx
+    .update(comics)
+    .set({ viewCount: sql`view_count + 1` })
+    .where(eq(comics.id, comicId))
+    .returning();
+
+  return updated;
+});
+```
+
+## Raw SQL
+
+```typescript
+import { sql } from "drizzle-orm";
+
+// Raw query
+const result = await db.execute(sql`
+  SELECT c.*, COUNT(ch.id) as chapter_count
+  FROM lovertoon_comic c
+  LEFT JOIN lovertoon_chapter ch ON ch.comic_id = c.id
+  GROUP BY c.id
+  ORDER BY chapter_count DESC
+  LIMIT 10
+`);
+
+// SQL in select
+const comicsWithStats = await db
+  .select({
+    comic: comics,
+    chapterCount: sql<number>`
+      (SELECT COUNT(*) FROM lovertoon_chapter
+       WHERE comic_id = ${comics.id})
+    `.as("chapter_count"),
+  })
+  .from(comics);
+
+// SQL in where
+const recentlyActive = await db
+  .select()
+  .from(comics)
+  .where(sql`created_at > NOW() - INTERVAL '7 days'`);
+```
+
+## Common Query Patterns
+
+### Pagination
+
+```typescript
+async function getPaginatedComics(page: number, limit: number = 20) {
+  const offset = (page - 1) * limit;
+
+  const [items, [{ count: total }]] = await Promise.all([
+    db.query.lovertoonComics.findMany({
+      where: eq(comics.status, "active"),
+      limit,
+      offset,
+      orderBy: [desc(comics.createdAt)],
+    }),
+    db.select({ count: count() }).from(comics).where(eq(comics.status, "active")),
+  ]);
+
+  return {
+    items,
+    total,
+    page,
+    totalPages: Math.ceil(total / limit),
+  };
+}
+```
+
+### Check Ownership
+
+```typescript
+async function checkOwnership(comicId: number, userId: string) {
+  const comic = await db.query.lovertoonComics.findFirst({
+    where: and(
+      eq(comics.id, comicId),
+      eq(comics.createdById, userId)
+    ),
+  });
+
+  return !!comic;
+}
+```
+
+### Check Purchase
+
+```typescript
+async function hasPurchased(userId: string, chapterId: number) {
+  const order = await db.query.lovertoonOrders.findFirst({
+    where: and(
+      eq(orders.userId, userId),
+      eq(orders.chapterId, chapterId)
+    ),
+  });
+
+  return !!order;
+}
+```
+
+### Soft Delete
+
+```typescript
+async function softDeleteComic(comicId: number) {
+  await db
+    .update(comics)
+    .set({ status: "deleted" })
+    .where(eq(comics.id, comicId));
+}
+
+// Query excluding deleted
+const activeComics = await db.query.lovertoonComics.findMany({
+  where: and(
+    eq(comics.status, "active"),
+    // or: not(eq(comics.status, "deleted"))
+  ),
+});
+```
+
+## Performance Tips
+
+<AccordionGroup>
+  <Accordion title="Select Only Needed Columns">
+    ```typescript
+    // Good - select only what you need
+    const comics = await db.query.lovertoonComics.findMany({
+      columns: { id: true, name: true, slug: true },
+    });
+
+    // Avoid - selecting all columns when not needed
+    const comics = await db.select().from(comics);
+    ```
+  </Accordion>
+
+  <Accordion title="Use Indexes">
+    Ensure columns used in WHERE, ORDER BY, and JOIN have indexes.
+  </Accordion>
+
+  <Accordion title="Limit Relation Depth">
+    Avoid deeply nested relations. Fetch in separate queries if needed.
+  </Accordion>
+
+  <Accordion title="Use Transactions for Related Operations">
+    Group related operations in transactions for consistency and performance.
+  </Accordion>
+</AccordionGroup>

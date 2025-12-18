@@ -1,0 +1,337 @@
+---
+title: "User Roles"
+description: "Role-based access control system"
+---
+
+## Role Hierarchy
+
+Lovertoon has 5 user roles with hierarchical permissions:
+
+```
+super_admin
+    │
+    ▼
+  admin
+    │
+    ▼
+ creator ─────► creator_assistance
+    │
+    ▼
+  user
+```
+
+## Role Definitions
+
+### user (Default)
+
+Regular platform users who can:
+- Browse and search content
+- Purchase coins
+- Buy and read chapters
+- Add favorites
+- Write comments
+- Subscribe to PASS
+
+### creator
+
+Content creators who can:
+- Everything a `user` can do
+- Create and manage comics
+- Create and manage chapters
+- View earnings and analytics
+- Request payouts
+- Manage free reading codes
+- Bid on promotions
+- Manage assistant team
+
+### creator_assistance
+
+Creator assistants who can:
+- Everything a `user` can do
+- Manage comics (with permission)
+- Manage chapters (with permission)
+- View creator dashboard (limited)
+
+<Note>
+Assistant permissions are granular and set by the creator.
+</Note>
+
+### admin
+
+Platform administrators who can:
+- Everything a `creator` can do
+- Manage all content
+- Approve/decline creator applications
+- Moderate comments
+- Manage categories
+- View platform statistics
+- Manage promotions
+- Process payouts
+
+### super_admin
+
+Full platform access including:
+- Everything an `admin` can do
+- Manage admin users
+- System configuration
+- Dangerous operations
+
+## Role Storage
+
+Roles are stored in the `users` table:
+
+```typescript
+// src/server/db/schema.ts
+export const users = createTable("user", (d) => ({
+  // ...
+  role: d.text().notNull().default("user"),
+  // ...
+}));
+
+export type UserRole =
+  | "super_admin"
+  | "admin"
+  | "creator"
+  | "creator_assistance"
+  | "user";
+```
+
+## Role Checking
+
+### In Session
+
+```typescript
+const session = await auth();
+const role = session?.user.role;
+
+if (role === "admin" || role === "super_admin") {
+  // Admin access
+}
+```
+
+### In Components
+
+```typescript
+// Server Component
+import { auth } from "~/server/auth";
+
+export default async function AdminPage() {
+  const session = await auth();
+
+  if (session?.user.role !== "admin" && session?.user.role !== "super_admin") {
+    redirect("/");
+  }
+
+  return <AdminDashboard />;
+}
+```
+
+```typescript
+// Client Component
+"use client";
+import { useSession } from "next-auth/react";
+
+export function AdminButton() {
+  const { data: session } = useSession();
+
+  if (!["admin", "super_admin"].includes(session?.user.role ?? "")) {
+    return null;
+  }
+
+  return <button>Admin Action</button>;
+}
+```
+
+### In tRPC
+
+```typescript
+// Using procedure types
+adminProcedure      // admin or super_admin
+creatorProcedure    // creator, creator_assistance, admin, super_admin
+protectedProcedure  // any authenticated user
+
+// Manual check in procedure
+.query(async ({ ctx }) => {
+  if (ctx.session?.user.role !== "super_admin") {
+    throw new TRPCError({ code: "FORBIDDEN" });
+  }
+});
+```
+
+## Role Transitions
+
+### User → Creator
+
+```
+1. User applies at /join-creator
+2. Application stored in `creators` table with status "pending"
+3. Admin reviews application
+4. If approved:
+   - User role changes to "creator"
+   - Creator record status changes to "approved"
+```
+
+### User → Creator Assistant
+
+```
+1. Creator invites user by email
+2. Invitation stored in `assistant_invitations`
+3. User accepts invitation
+4. User role changes to "creator_assistance"
+5. Permissions set in `creator_assistants`
+```
+
+### Role Change Implementation
+
+```typescript
+// Admin changing user role
+export const userManagementRouter = createTRPCRouter({
+  updateRole: adminProcedure
+    .input(z.object({
+      userId: z.string(),
+      role: z.enum(["user", "creator", "admin"]),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // Super admin check for promoting to admin
+      if (input.role === "admin" && ctx.session.user.role !== "super_admin") {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "เฉพาะ Super Admin เท่านั้นที่สามารถแต่งตั้ง Admin",
+        });
+      }
+
+      return ctx.db.update(users)
+        .set({ role: input.role })
+        .where(eq(users.id, input.userId));
+    }),
+});
+```
+
+## Assistant Permissions
+
+Creator assistants have granular permissions:
+
+```typescript
+// src/server/db/schema.ts
+export const creatorAssistants = createTable("creator_assistant", (d) => ({
+  // ...
+  canAddComic: d.boolean().notNull().default(false),
+  canAddChapter: d.boolean().notNull().default(false),
+  canChangeComicStatus: d.boolean().notNull().default(false),
+  canChangeChapterStatus: d.boolean().notNull().default(false),
+  // ...
+}));
+```
+
+### Checking Assistant Permissions
+
+```typescript
+async function checkAssistantPermission(
+  userId: string,
+  permission: keyof typeof permissions
+) {
+  const assistant = await db.query.lovertoonCreatorAssistants.findFirst({
+    where: and(
+      eq(creatorAssistants.assistantUserId, userId),
+      eq(creatorAssistants.status, "active"),
+    ),
+  });
+
+  return assistant?.[permission] ?? false;
+}
+
+// Usage in procedure
+.mutation(async ({ ctx, input }) => {
+  if (ctx.session.user.role === "creator_assistance") {
+    const canAdd = await checkAssistantPermission(
+      ctx.session.user.id,
+      "canAddChapter"
+    );
+
+    if (!canAdd) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "คุณไม่มีสิทธิ์เพิ่มตอน",
+      });
+    }
+  }
+
+  // Proceed with adding chapter
+});
+```
+
+## Route Protection Matrix
+
+| Route | user | creator | assistant | admin | super_admin |
+|-------|------|---------|-----------|-------|-------------|
+| `/` | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `/profile` | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `/creator` | ✗ | ✓ | ✓* | ✓ | ✓ |
+| `/creator/assistants` | ✗ | ✓ | ✗ | ✓ | ✓ |
+| `/admin` | ✗ | ✗ | ✗ | ✓ | ✓ |
+| `/admin/settings` | ✗ | ✗ | ✗ | ✗ | ✓ |
+
+*Limited based on permissions
+
+## tRPC Procedure Matrix
+
+| Procedure | user | creator | assistant | admin | super_admin |
+|-----------|------|---------|-----------|-------|-------------|
+| `publicProcedure` | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `protectedProcedure` | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `creatorProcedure` | ✗ | ✓ | ✓ | ✓ | ✓ |
+| `creatorOnlyProcedure` | ✗ | ✓ | ✗ | ✓ | ✓ |
+| `adminProcedure` | ✗ | ✗ | ✗ | ✓ | ✓ |
+| `superAdminProcedure` | ✗ | ✗ | ✗ | ✗ | ✓ |
+
+## UI Based on Role
+
+```typescript
+"use client";
+import { useSession } from "next-auth/react";
+
+export function Navigation() {
+  const { data: session } = useSession();
+  const role = session?.user.role;
+
+  return (
+    <nav>
+      <Link href="/">Home</Link>
+
+      {session && <Link href="/profile">Profile</Link>}
+
+      {(role === "creator" || role === "creator_assistance") && (
+        <Link href="/creator">Creator Dashboard</Link>
+      )}
+
+      {(role === "admin" || role === "super_admin") && (
+        <Link href="/admin">Admin</Link>
+      )}
+    </nav>
+  );
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Default to Restrictive">
+    Start with no access and explicitly grant permissions.
+  </Accordion>
+
+  <Accordion title="Check on Server">
+    Always verify roles on the server, never trust client checks alone.
+  </Accordion>
+
+  <Accordion title="Use Procedure Types">
+    Leverage tRPC procedure types for consistent authorization.
+  </Accordion>
+
+  <Accordion title="Log Role Changes">
+    Audit all role changes for security.
+  </Accordion>
+
+  <Accordion title="Granular Permissions">
+    For assistants, use granular permissions rather than all-or-nothing.
+  </Accordion>
+</AccordionGroup>

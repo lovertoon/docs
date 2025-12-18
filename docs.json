@@ -135,6 +135,92 @@
             ]
           }
         ]
+      },
+      {
+        "tab": "Developer Guide",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "developer-guide/overview",
+              "developer-guide/tech-stack",
+              "developer-guide/project-structure",
+              "developer-guide/development-setup"
+            ]
+          },
+          {
+            "group": "Architecture",
+            "pages": [
+              "developer-guide/architecture-overview",
+              "developer-guide/app-router",
+              "developer-guide/state-management"
+            ]
+          },
+          {
+            "group": "Database",
+            "pages": [
+              "developer-guide/database-overview",
+              "developer-guide/schema-reference",
+              "developer-guide/drizzle-queries",
+              "developer-guide/migrations"
+            ]
+          },
+          {
+            "group": "API (tRPC)",
+            "pages": [
+              "developer-guide/trpc-overview",
+              "developer-guide/trpc-routers",
+              "developer-guide/trpc-procedures",
+              "developer-guide/trpc-usage"
+            ]
+          },
+          {
+            "group": "Authentication",
+            "pages": [
+              "developer-guide/auth-overview",
+              "developer-guide/auth-providers",
+              "developer-guide/auth-session",
+              "developer-guide/auth-roles"
+            ]
+          },
+          {
+            "group": "Integrations",
+            "pages": [
+              "developer-guide/stripe-integration",
+              "developer-guide/r2-storage",
+              "developer-guide/email-resend"
+            ]
+          },
+          {
+            "group": "Validation & Schemas",
+            "pages": [
+              "developer-guide/validation-overview",
+              "developer-guide/zod-schemas"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "developer-guide/environment-variables",
+              "developer-guide/typescript-config",
+              "developer-guide/eslint-config"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "developer-guide/deployment",
+              "developer-guide/docker"
+            ]
+          },
+          {
+            "group": "Contributing",
+            "pages": [
+              "developer-guide/contributing",
+              "developer-guide/code-style"
+            ]
+          }
+        ]
       }
     ],
     "global": {

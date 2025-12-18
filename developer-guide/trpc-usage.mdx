@@ -1,0 +1,504 @@
+---
+title: "tRPC Usage"
+description: "Using tRPC in components and patterns"
+---
+
+## Client Setup
+
+### Provider
+
+tRPC is provided at the root level:
+
+```typescript
+// src/app/layout.tsx
+import { TRPCReactProvider } from "~/trpc/react";
+
+export default function RootLayout({ children }) {
+  return (
+    <html>
+      <body>
+        <TRPCReactProvider>{children}</TRPCReactProvider>
+      </body>
+    </html>
+  );
+}
+```
+
+### Imports
+
+```typescript
+// Server Components
+import { api } from "~/trpc/server";
+
+// Client Components
+import { api } from "~/trpc/react";
+```
+
+## Server Component Usage
+
+### Basic Query
+
+```typescript
+// src/app/(home)/comics/page.tsx
+import { api } from "~/trpc/server";
+
+export default async function ComicsPage() {
+  const comics = await api.comic.getAll.query({ status: "active" });
+
+  return (
+    <div className="grid grid-cols-4 gap-4">
+      {comics.map(comic => (
+        <ComicCard key={comic.id} comic={comic} />
+      ))}
+    </div>
+  );
+}
+```
+
+### With Parameters
+
+```typescript
+// src/app/(home)/comics/[slug]/page.tsx
+export default async function ComicPage({
+  params,
+}: {
+  params: { slug: string }
+}) {
+  const comic = await api.comic.getBySlug.query({ slug: params.slug });
+
+  if (!comic) {
+    notFound();
+  }
+
+  return <ComicDetail comic={comic} />;
+}
+```
+
+### Multiple Queries
+
+```typescript
+export default async function DashboardPage() {
+  // Parallel queries
+  const [stats, recentOrders, topComics] = await Promise.all([
+    api.dashboard.getStats.query(),
+    api.order.getRecent.query({ limit: 10 }),
+    api.comic.getTop.query({ limit: 5 }),
+  ]);
+
+  return (
+    <div>
+      <StatsCards stats={stats} />
+      <RecentOrders orders={recentOrders} />
+      <TopComics comics={topComics} />
+    </div>
+  );
+}
+```
+
+## Client Component Usage
+
+### useQuery
+
+```typescript
+"use client";
+import { api } from "~/trpc/react";
+
+export function ComicList() {
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = api.comic.getAll.useQuery({ status: "active" });
+
+  if (isLoading) {
+    return <div>กำลังโหลด...</div>;
+  }
+
+  if (isError) {
+    return <div>เกิดข้อผิดพลาด: {error.message}</div>;
+  }
+
+  return (
+    <div>
+      {data?.map(comic => <ComicCard key={comic.id} comic={comic} />)}
+      <button onClick={() => refetch()}>Refresh</button>
+    </div>
+  );
+}
+```
+
+### Conditional Query
+
+```typescript
+"use client";
+
+export function UserProfile({ userId }: { userId?: string }) {
+  const { data: user } = api.user.getById.useQuery(
+    { id: userId! },
+    {
+      enabled: !!userId, // Only fetch when userId exists
+    }
+  );
+
+  return user ? <div>{user.name}</div> : null;
+}
+```
+
+### Query Options
+
+```typescript
+const { data } = api.comic.getAll.useQuery(
+  { status: "active" },
+  {
+    // Cache options
+    staleTime: 5 * 60 * 1000,      // Fresh for 5 minutes
+    cacheTime: 30 * 60 * 1000,     // Keep in cache 30 minutes
+
+    // Refetch options
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+    refetchOnReconnect: true,
+    refetchInterval: false,        // Or number in ms
+
+    // Callbacks
+    onSuccess: (data) => console.log("Loaded", data),
+    onError: (error) => console.error(error),
+    onSettled: (data, error) => console.log("Done"),
+
+    // Initial data
+    initialData: [],
+    placeholderData: previousData,
+  }
+);
+```
+
+### useMutation
+
+```typescript
+"use client";
+import { api } from "~/trpc/react";
+import { toast } from "sonner";
+
+export function CreateComicForm() {
+  const utils = api.useUtils();
+
+  const createComic = api.comic.create.useMutation({
+    onSuccess: (newComic) => {
+      // Invalidate and refetch
+      utils.comic.getAll.invalidate();
+      toast.success("สร้างการ์ตูนสำเร็จ");
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+    onMutate: async (variables) => {
+      // Called before mutation starts
+      console.log("Creating:", variables);
+    },
+    onSettled: () => {
+      // Called after success or error
+    },
+  });
+
+  const handleSubmit = (data: CreateComicInput) => {
+    createComic.mutate(data);
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      {/* form fields */}
+      <button
+        type="submit"
+        disabled={createComic.isPending}
+      >
+        {createComic.isPending ? "กำลังสร้าง..." : "สร้างการ์ตูน"}
+      </button>
+    </form>
+  );
+}
+```
+
+### Mutation States
+
+```typescript
+const mutation = api.comic.create.useMutation();
+
+// States
+mutation.isPending   // Currently executing
+mutation.isSuccess   // Completed successfully
+mutation.isError     // Failed
+mutation.isIdle      // Not yet called
+
+// Data
+mutation.data        // Success response
+mutation.error       // Error object
+
+// Methods
+mutation.mutate(data)      // Fire and forget
+mutation.mutateAsync(data) // Returns promise
+mutation.reset()           // Reset state
+```
+
+## Cache Management
+
+### useUtils
+
+```typescript
+const utils = api.useUtils();
+```
+
+### Invalidation
+
+```typescript
+// Invalidate single query
+utils.comic.getAll.invalidate();
+
+// Invalidate with parameters
+utils.comic.getById.invalidate({ id: 1 });
+
+// Invalidate all queries in router
+utils.comic.invalidate();
+
+// Invalidate everything
+utils.invalidate();
+```
+
+### Prefetching
+
+```typescript
+// Prefetch for later use
+utils.comic.getBySlug.prefetch({ slug: "one-piece" });
+
+// On hover
+<Link
+  href={`/comics/${comic.slug}`}
+  onMouseEnter={() => {
+    utils.comic.getBySlug.prefetch({ slug: comic.slug });
+  }}
+>
+  {comic.name}
+</Link>
+```
+
+### Direct Cache Access
+
+```typescript
+// Get cached data
+const cachedComic = utils.comic.getById.getData({ id: 1 });
+
+// Set cached data
+utils.comic.getById.setData({ id: 1 }, (old) => ({
+  ...old,
+  name: "Updated Name",
+}));
+
+// Cancel ongoing query
+await utils.comic.getById.cancel({ id: 1 });
+```
+
+## Optimistic Updates
+
+```typescript
+const toggleFavorite = api.favorites.toggle.useMutation({
+  onMutate: async ({ comicId }) => {
+    // Cancel outgoing queries
+    await utils.favorites.isFavorite.cancel({ comicId });
+
+    // Get current state
+    const previousValue = utils.favorites.isFavorite.getData({ comicId });
+
+    // Optimistically update
+    utils.favorites.isFavorite.setData({ comicId }, !previousValue);
+
+    // Return for rollback
+    return { previousValue };
+  },
+
+  onError: (err, { comicId }, context) => {
+    // Rollback on error
+    utils.favorites.isFavorite.setData(
+      { comicId },
+      context?.previousValue
+    );
+  },
+
+  onSettled: (_, __, { comicId }) => {
+    // Refetch to ensure consistency
+    utils.favorites.isFavorite.invalidate({ comicId });
+  },
+});
+```
+
+## Infinite Queries
+
+```typescript
+export function InfiniteComicList() {
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = api.comic.getInfinite.useInfiniteQuery(
+    { limit: 20 },
+    {
+      getNextPageParam: (lastPage) => lastPage.nextCursor,
+    }
+  );
+
+  return (
+    <div>
+      {data?.pages.map((page) =>
+        page.items.map((comic) => (
+          <ComicCard key={comic.id} comic={comic} />
+        ))
+      )}
+
+      {hasNextPage && (
+        <button
+          onClick={() => fetchNextPage()}
+          disabled={isFetchingNextPage}
+        >
+          {isFetchingNextPage ? "กำลังโหลด..." : "โหลดเพิ่ม"}
+        </button>
+      )}
+    </div>
+  );
+}
+```
+
+## Form Integration
+
+### With React Hook Form
+
+```typescript
+"use client";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { createComicSchema, type CreateComicInput } from "~/lib/schemas/comic";
+
+export function CreateComicForm() {
+  const utils = api.useUtils();
+
+  const form = useForm<CreateComicInput>({
+    resolver: zodResolver(createComicSchema),
+    defaultValues: {
+      name: "",
+      slug: "",
+      status: "draft",
+    },
+  });
+
+  const createComic = api.comic.create.useMutation({
+    onSuccess: () => {
+      form.reset();
+      utils.comic.getAll.invalidate();
+    },
+  });
+
+  const onSubmit = (data: CreateComicInput) => {
+    createComic.mutate(data);
+  };
+
+  return (
+    <form onSubmit={form.handleSubmit(onSubmit)}>
+      <input {...form.register("name")} />
+      <input {...form.register("slug")} />
+
+      <button
+        type="submit"
+        disabled={form.formState.isSubmitting || createComic.isPending}
+      >
+        Create
+      </button>
+    </form>
+  );
+}
+```
+
+## Error Handling Patterns
+
+### Global Error Handler
+
+```typescript
+// In TRPCReactProvider
+const [trpcClient] = useState(() =>
+  api.createClient({
+    links: [
+      httpBatchLink({
+        url: "/api/trpc",
+      }),
+    ],
+  })
+);
+
+const [queryClient] = useState(
+  () =>
+    new QueryClient({
+      defaultOptions: {
+        queries: {
+          onError: (error) => {
+            // Global error handling
+            toast.error("เกิดข้อผิดพลาด");
+          },
+        },
+        mutations: {
+          onError: (error) => {
+            toast.error(error.message);
+          },
+        },
+      },
+    })
+);
+```
+
+### Per-Query Error Handling
+
+```typescript
+const { data, error } = api.comic.getById.useQuery(
+  { id: comicId },
+  {
+    onError: (error) => {
+      if (error.data?.code === "NOT_FOUND") {
+        router.push("/404");
+      }
+    },
+  }
+);
+```
+
+## Common Patterns
+
+### Loading States
+
+```typescript
+export function ComicList() {
+  const { data, isLoading } = api.comic.getAll.useQuery();
+
+  if (isLoading) {
+    return <ComicGridSkeleton count={8} />;
+  }
+
+  return <ComicGrid comics={data ?? []} />;
+}
+```
+
+### Polling
+
+```typescript
+const { data } = api.notification.getUnread.useQuery(undefined, {
+  refetchInterval: 30 * 1000, // Poll every 30 seconds
+});
+```
+
+### Dependent Queries
+
+```typescript
+const { data: user } = api.user.getCurrent.useQuery();
+
+const { data: orders } = api.order.getByUser.useQuery(
+  { userId: user?.id! },
+  { enabled: !!user?.id }
+);
+```

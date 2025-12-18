@@ -1,0 +1,315 @@
+---
+title: "Project Structure"
+description: "File and folder organization in Lovertoon"
+---
+
+## Root Directory
+
+```
+lovertoon/
+├── src/                    # Application source code
+├── public/                 # Static assets
+├── drizzle/                # Database migrations
+├── docs/                   # Documentation (Mintlify)
+├── .env                    # Environment variables (not in git)
+├── .env.example            # Environment template
+├── drizzle.config.ts       # Drizzle ORM configuration
+├── next.config.js          # Next.js configuration
+├── package.json            # Dependencies and scripts
+├── tailwind.config.ts      # Tailwind CSS configuration
+├── tsconfig.json           # TypeScript configuration
+└── start-database.sh       # Docker PostgreSQL script
+```
+
+## Source Directory (`src/`)
+
+### Application Routes (`src/app/`)
+
+Next.js App Router with route groups:
+
+```
+src/app/
+├── (home)/                 # Public routes (main layout)
+│   ├── page.tsx            # Homepage (/)
+│   ├── comics/
+│   │   ├── page.tsx        # Comic listing (/comics)
+│   │   └── [slug]/
+│   │       ├── page.tsx    # Comic detail (/comics/[slug])
+│   │       └── [chapterId]/
+│   │           └── page.tsx # Chapter reader
+│   ├── topup/
+│   │   └── page.tsx        # Coin purchase (/topup)
+│   ├── profile/
+│   │   └── page.tsx        # User profile (/profile)
+│   ├── join-creator/
+│   │   └── page.tsx        # Creator application
+│   └── layout.tsx          # Public layout (nav + footer)
+│
+├── (auth)/                 # Auth routes (minimal layout)
+│   ├── signin/
+│   │   └── page.tsx        # Sign in (/signin)
+│   ├── signup/
+│   │   └── page.tsx        # Sign up (/signup)
+│   ├── forgot-password/
+│   │   └── page.tsx        # Password reset
+│   └── layout.tsx          # Auth layout
+│
+├── admin/                  # Admin dashboard
+│   ├── page.tsx            # Admin overview (/admin)
+│   ├── comics/             # Comics management
+│   ├── categories/         # Categories management
+│   ├── users/              # User management
+│   ├── creators/           # Creator applications
+│   ├── comments/           # Comment moderation
+│   ├── promotions/         # Homepage promotions
+│   ├── orders/             # Order history
+│   ├── topups/             # Top-up history
+│   ├── payouts/            # Creator payouts
+│   └── layout.tsx          # Admin layout (sidebar)
+│
+├── creator/                # Creator dashboard
+│   ├── page.tsx            # Creator overview (/creator)
+│   ├── comics/             # Comics management
+│   ├── comments/           # Comments on creator's content
+│   ├── earnings/           # Earnings & analytics
+│   ├── orders/             # Sales history
+│   ├── free-codes/         # Free reading codes
+│   ├── pass/               # Creator PASS
+│   ├── assistants/         # Team management
+│   └── layout.tsx          # Creator layout (sidebar)
+│
+├── api/                    # API routes
+│   ├── trpc/
+│   │   └── [trpc]/
+│   │       └── route.ts    # tRPC endpoint
+│   └── stripe/
+│       └── webhook/
+│           └── route.ts    # Stripe webhook
+│
+├── layout.tsx              # Root layout
+├── globals.css             # Global styles
+└── not-found.tsx           # 404 page
+```
+
+### Server Code (`src/server/`)
+
+Backend logic separated from routes:
+
+```
+src/server/
+├── api/
+│   ├── root.ts             # Root tRPC router
+│   ├── trpc.ts             # tRPC configuration
+│   └── routers/            # Domain-specific routers
+│       ├── auth.ts
+│       ├── comic.ts
+│       ├── chapter.ts
+│       ├── category.ts
+│       ├── comment.ts
+│       ├── user.ts
+│       ├── creator.ts
+│       ├── creatorAssistant.ts
+│       ├── creatorPass.ts
+│       ├── creatorProfile.ts
+│       ├── order.ts
+│       ├── purchase.ts
+│       ├── topup.ts
+│       ├── stripe.ts
+│       ├── payout.ts
+│       ├── favorites.ts
+│       ├── chapterView.ts
+│       ├── comicAnalytics.ts
+│       ├── dashboard.ts
+│       ├── promotion.ts
+│       ├── promotionBidding.ts
+│       ├── hotStories.ts
+│       ├── pass.ts
+│       ├── freeReadingCode.ts
+│       ├── userManagement.ts
+│       └── r2Upload.ts
+│
+├── db/
+│   ├── index.ts            # Drizzle client
+│   └── schema.ts           # Database schema (~1500 lines)
+│
+├── auth/
+│   ├── index.ts            # Auth exports
+│   └── config.ts           # NextAuth configuration
+│
+├── stripe/
+│   └── webhook.ts          # Stripe webhook handler
+│
+└── r2/
+    └── config.ts           # Cloudflare R2 configuration
+```
+
+### Components (`src/components/`)
+
+React components organized by feature:
+
+```
+src/components/
+├── ui/                     # shadcn/ui components
+│   ├── button.tsx
+│   ├── card.tsx
+│   ├── dialog.tsx
+│   ├── form.tsx
+│   ├── input.tsx
+│   ├── select.tsx
+│   ├── table.tsx
+│   └── ...
+│
+├── admin/                  # Admin-specific components
+│   ├── AdminSidebar.tsx
+│   ├── ComicsTable.tsx
+│   └── ...
+│
+├── creator/                # Creator-specific components
+│   ├── CreatorSidebar.tsx
+│   ├── EarningsChart.tsx
+│   └── ...
+│
+├── comic/                  # Comic-related components
+│   ├── ComicCard.tsx
+│   ├── ComicGrid.tsx
+│   ├── ChapterList.tsx
+│   └── ChapterReader.tsx
+│
+├── layout/                 # Layout components
+│   ├── Navbar.tsx
+│   ├── Footer.tsx
+│   └── Sidebar.tsx
+│
+├── forms/                  # Form components
+│   ├── ComicForm.tsx
+│   ├── ChapterForm.tsx
+│   └── ...
+│
+└── shared/                 # Shared utilities
+    ├── ImageUploader.tsx
+    ├── FileDropzone.tsx
+    ├── DraggableImageList.tsx
+    └── LoadingSpinner.tsx
+```
+
+### Library Code (`src/lib/`)
+
+Shared utilities and configurations:
+
+```
+src/lib/
+├── schemas/                # Zod validation schemas
+│   ├── comic.ts
+│   ├── chapter.ts
+│   ├── category.ts
+│   ├── comment.ts
+│   ├── creator.ts
+│   ├── creatorAssistant.ts
+│   ├── creatorPass.ts
+│   ├── creatorProfile.ts
+│   ├── freeReadingCode.ts
+│   ├── pass.ts
+│   ├── payout.ts
+│   ├── promotion.ts
+│   ├── promotionBidding.ts
+│   ├── purchase.ts
+│   ├── topup.ts
+│   └── user.ts
+│
+├── contexts/               # React contexts
+│   └── AdultContentContext.tsx
+│
+├── utils/                  # Utility functions
+│   ├── cn.ts               # Class name helper
+│   └── formatters.ts       # Date/number formatters
+│
+└── constants/              # Application constants
+    └── coins.ts            # Coin package definitions
+```
+
+### tRPC Client (`src/trpc/`)
+
+Client-side tRPC setup:
+
+```
+src/trpc/
+├── react.tsx               # React Query client
+├── server.ts               # Server-side client
+└── query-client.ts         # TanStack Query config
+```
+
+## Configuration Files
+
+### Environment (`src/env.js`)
+
+Runtime environment validation with Zod:
+
+```javascript
+export const env = createEnv({
+  server: {
+    AUTH_SECRET: z.string(),
+    DATABASE_URL: z.string().url(),
+    STRIPE_SECRET_KEY: z.string(),
+    // ... more server variables
+  },
+  client: {
+    // Client-side variables (NEXT_PUBLIC_*)
+  },
+});
+```
+
+### Database (`drizzle.config.ts`)
+
+```typescript
+export default defineConfig({
+  schema: "./src/server/db/schema.ts",
+  dialect: "postgresql",
+  dbCredentials: {
+    url: process.env.DATABASE_URL!,
+  },
+  tablesFilter: ["lovertoon_*"],
+});
+```
+
+### Next.js (`next.config.js`)
+
+```javascript
+const config = {
+  images: {
+    domains: ["utfs.io", "lh3.googleusercontent.com", "cdn.lovertoon.com"],
+  },
+};
+```
+
+## Naming Conventions
+
+| Type | Convention | Example |
+|------|------------|---------|
+| Files | kebab-case | `comic-card.tsx` |
+| Components | PascalCase | `ComicCard` |
+| Functions | camelCase | `createCheckoutSession` |
+| Database Tables | snake_case + prefix | `lovertoon_comics` |
+| Routes | lowercase with hyphens | `/join-creator` |
+
+## Import Alias
+
+The `~/` path alias maps to `src/`:
+
+```typescript
+// Instead of
+import { api } from "../../../trpc/server";
+
+// Use
+import { api } from "~/trpc/server";
+```
+
+Configured in `tsconfig.json`:
+```json
+{
+  "compilerOptions": {
+    "paths": {
+      "~/*": ["./src/*"]
+    }
+  }
+}
+```

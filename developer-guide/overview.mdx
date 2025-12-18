@@ -1,0 +1,141 @@
+---
+title: "Developer Guide"
+description: "Technical documentation for Lovertoon developers"
+---
+
+## Welcome
+
+This developer guide provides comprehensive technical documentation for building and maintaining the Lovertoon platform. Whether you're a new team member or an experienced contributor, this guide will help you understand the codebase architecture and development workflows.
+
+## What is Lovertoon?
+
+Lovertoon is a Thai-language webtoon (online comic) and novel reading platform with a complete monetization system. The platform enables:
+
+- **Readers**: Browse, purchase, and read comics/novels with a coin-based economy
+- **Creators**: Publish content, manage chapters, and earn revenue
+- **Administrators**: Manage content, users, and platform operations
+
+## Tech Stack
+
+<CardGroup cols={2}>
+  <Card title="Next.js 15" icon="react">
+    App Router with React Server Components
+  </Card>
+  <Card title="tRPC 11" icon="code">
+    Type-safe API layer (not REST)
+  </Card>
+  <Card title="PostgreSQL" icon="database">
+    Database via Drizzle ORM
+  </Card>
+  <Card title="TypeScript" icon="js">
+    Strict mode with ES Modules
+  </Card>
+</CardGroup>
+
+## Key Features
+
+### Core Platform
+- Comic and novel reading with multiple display modes
+- Chapter-based content with pricing
+- User favorites and reading history with progress tracking
+- Comment system with threaded replies
+
+### Monetization
+- Virtual coin economy with Stripe payments
+- Chapter purchases with PASS discounts
+- Creator earnings with automated payouts via Stripe Connect
+- Promotion bidding system for homepage visibility
+
+### Creator Tools
+- Creator dashboard with analytics
+- Free reading codes for promotions
+- Creator PASS for Hot Stories feature
+- Assistant management with permissions
+
+## Architecture Overview
+
+```
+lovertoon/
+├── src/
+│   ├── app/              # Next.js App Router pages
+│   │   ├── (home)/       # Public routes
+│   │   ├── (auth)/       # Authentication routes
+│   │   ├── admin/        # Admin dashboard
+│   │   └── creator/      # Creator dashboard
+│   ├── components/       # React components
+│   ├── server/           # Backend code
+│   │   ├── api/          # tRPC routers
+│   │   ├── db/           # Drizzle ORM schema
+│   │   ├── auth/         # NextAuth.js config
+│   │   ├── stripe/       # Stripe integration
+│   │   └── r2/           # Cloudflare R2 storage
+│   ├── lib/              # Shared utilities
+│   │   └── schemas/      # Zod validation schemas
+│   └── trpc/             # tRPC client setup
+├── public/               # Static assets
+└── drizzle/              # Database migrations
+```
+
+## Getting Started
+
+<Steps>
+  <Step title="Prerequisites">
+    Ensure you have Node.js 18+, Bun, and Docker installed.
+  </Step>
+  <Step title="Clone Repository">
+    Clone the repository and install dependencies with `bun install`.
+  </Step>
+  <Step title="Setup Environment">
+    Copy `.env.example` to `.env` and configure required variables.
+  </Step>
+  <Step title="Start Database">
+    Run `./start-database.sh` to start PostgreSQL in Docker.
+  </Step>
+  <Step title="Run Migrations">
+    Execute `bun run db:migrate` to setup the database schema.
+  </Step>
+  <Step title="Start Development">
+    Run `bun run dev` to start the development server.
+  </Step>
+</Steps>
+
+## Quick Links
+
+<CardGroup cols={3}>
+  <Card title="Tech Stack" icon="layer-group" href="/developer-guide/tech-stack">
+    Detailed technology breakdown
+  </Card>
+  <Card title="Project Structure" icon="folder-tree" href="/developer-guide/project-structure">
+    File and folder organization
+  </Card>
+  <Card title="Database Schema" icon="database" href="/developer-guide/schema-reference">
+    Table definitions and relationships
+  </Card>
+  <Card title="tRPC API" icon="plug" href="/developer-guide/trpc-overview">
+    API architecture and patterns
+  </Card>
+  <Card title="Authentication" icon="lock" href="/developer-guide/auth-overview">
+    Auth providers and roles
+  </Card>
+  <Card title="Stripe Integration" icon="credit-card" href="/developer-guide/stripe-integration">
+    Payment processing setup
+  </Card>
+</CardGroup>
+
+## User Roles
+
+The platform has five distinct user roles:
+
+| Role | Description |
+|------|-------------|
+| `user` | Regular reader account |
+| `creator` | Content creator with publishing rights |
+| `creator_assistance` | Assistant with delegated creator permissions |
+| `admin` | Platform administrator |
+| `super_admin` | Full administrative access |
+
+## Support
+
+<Note>
+For questions or issues with development, refer to the repository issues or contact the development team.
+</Note>

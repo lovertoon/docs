@@ -1,0 +1,457 @@
+---
+title: "R2 Storage"
+description: "File uploads with Cloudflare R2"
+---
+
+## Overview
+
+Lovertoon uses Cloudflare R2 for file storage:
+- S3-compatible object storage
+- Cost-effective (no egress fees)
+- CDN delivery via custom domain
+- Presigned URLs for secure uploads
+
+## Configuration
+
+### Environment Variables
+
+```bash
+R2_ACCOUNT_ID="your-cloudflare-account-id"
+R2_ACCESS_KEY_ID="your-r2-access-key"
+R2_SECRET_ACCESS_KEY="your-r2-secret-key"
+R2_BUCKET_NAME="lovertoon"
+R2_PUBLIC_DOMAIN="https://cdn.lovertoon.com"
+```
+
+### R2 Client Setup
+
+```typescript
+// src/server/r2/config.ts
+import { S3Client } from "@aws-sdk/client-s3";
+import { env } from "~/env";
+
+export const r2Client = new S3Client({
+  region: "auto",
+  endpoint: `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  credentials: {
+    accessKeyId: env.R2_ACCESS_KEY_ID,
+    secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+  },
+});
+
+export const r2Config = {
+  bucketName: env.R2_BUCKET_NAME,
+  publicDomain: env.R2_PUBLIC_DOMAIN,
+};
+```
+
+## Upload Endpoints
+
+Different upload types with specific limits:
+
+```typescript
+// src/server/r2/config.ts
+export const uploadEndpoints = {
+  comicCoverUploader: {
+    maxFileSize: 4 * 1024 * 1024, // 4MB
+    maxFileCount: 1,
+    allowedMimeTypes: ["image/jpeg", "image/png", "image/webp"],
+    requireAdmin: false,
+  },
+  comicBannerUploader: {
+    maxFileSize: 4 * 1024 * 1024,
+    maxFileCount: 1,
+    allowedMimeTypes: ["image/jpeg", "image/png", "image/webp"],
+    requireAdmin: false,
+  },
+  chapterCoverUploader: {
+    maxFileSize: 4 * 1024 * 1024,
+    maxFileCount: 1,
+    allowedMimeTypes: ["image/jpeg", "image/png", "image/webp"],
+    requireAdmin: false,
+  },
+  chapterContentUploader: {
+    maxFileSize: 8 * 1024 * 1024, // 8MB per image
+    maxFileCount: 100,
+    allowedMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+    requireAdmin: false,
+  },
+  profileImageUploader: {
+    maxFileSize: 2 * 1024 * 1024, // 2MB
+    maxFileCount: 1,
+    allowedMimeTypes: ["image/jpeg", "image/png", "image/webp"],
+    requireAdmin: false,
+  },
+};
+```
+
+## Upload Flow
+
+### 1. Request Presigned URL
+
+```typescript
+// src/server/api/routers/r2Upload.ts
+export const r2UploadRouter = createTRPCRouter({
+  getPresignedUrl: protectedProcedure
+    .input(z.object({
+      endpoint: z.enum([
+        "comicCoverUploader",
+        "comicBannerUploader",
+        "chapterCoverUploader",
+        "chapterContentUploader",
+        "profileImageUploader",
+      ]),
+      files: z.array(z.object({
+        name: z.string(),
+        type: z.string(),
+        size: z.number(),
+      })).min(1),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { endpoint, files } = input;
+      const config = uploadEndpoints[endpoint];
+
+      // Validate file count
+      if (files.length > config.maxFileCount) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `สามารถอัปโหลดได้สูงสุด ${config.maxFileCount} ไฟล์`,
+        });
+      }
+
+      const presignedUrls = await Promise.all(
+        files.map(async (file) => {
+          // Validate size
+          if (file.size > config.maxFileSize) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `ขนาดไฟล์ต้องไม่เกิน ${config.maxFileSize / (1024 * 1024)}MB`,
+            });
+          }
+
+          // Validate type
+          if (!config.allowedMimeTypes.includes(file.type)) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "รองรับเฉพาะไฟล์รูปภาพ",
+            });
+          }
+
+          // Generate unique key
+          const key = generateFileKey(endpoint, ctx.session.user.id, file.name);
+
+          // Create presigned URL
+          const command = new PutObjectCommand({
+            Bucket: r2Config.bucketName,
+            Key: key,
+            ContentType: file.type,
+            ContentLength: file.size,
+          });
+
+          const presignedUrl = await getSignedUrl(r2Client, command, {
+            expiresIn: 900, // 15 minutes
+          });
+
+          return {
+            presignedUrl,
+            key,
+            publicUrl: getPublicUrl(key),
+            fileName: file.name,
+          };
+        })
+      );
+
+      return { presignedUrls };
+    }),
+});
+```
+
+### 2. Client-Side Upload
+
+```typescript
+// src/components/ImageUploader.tsx
+"use client";
+import { api } from "~/trpc/react";
+
+export function ImageUploader({
+  endpoint,
+  onUploadComplete,
+}: {
+  endpoint: string;
+  onUploadComplete: (urls: string[]) => void;
+}) {
+  const getPresignedUrl = api.r2Upload.getPresignedUrl.useMutation();
+
+  const handleUpload = async (files: File[]) => {
+    // 1. Get presigned URLs
+    const { presignedUrls } = await getPresignedUrl.mutateAsync({
+      endpoint,
+      files: files.map((f) => ({
+        name: f.name,
+        type: f.type,
+        size: f.size,
+      })),
+    });
+
+    // 2. Upload files directly to R2
+    const uploadPromises = presignedUrls.map(async (presigned, index) => {
+      const file = files[index];
+
+      await fetch(presigned.presignedUrl, {
+        method: "PUT",
+        body: file,
+        headers: {
+          "Content-Type": file.type,
+        },
+      });
+
+      return presigned.publicUrl;
+    });
+
+    const uploadedUrls = await Promise.all(uploadPromises);
+    onUploadComplete(uploadedUrls);
+  };
+
+  return (
+    <input
+      type="file"
+      multiple={endpoint === "chapterContentUploader"}
+      accept="image/*"
+      onChange={(e) => {
+        const files = Array.from(e.target.files ?? []);
+        if (files.length > 0) {
+          handleUpload(files);
+        }
+      }}
+    />
+  );
+}
+```
+
+### 3. File Key Generation
+
+```typescript
+// src/server/r2/config.ts
+export function generateFileKey(
+  endpoint: string,
+  userId: string,
+  fileName: string
+): string {
+  const timestamp = Date.now();
+  const randomId = crypto.randomUUID().slice(0, 8);
+  const extension = fileName.split(".").pop();
+
+  // Format: endpoint/userId/timestamp-randomId.ext
+  return `${endpoint}/${userId}/${timestamp}-${randomId}.${extension}`;
+}
+
+export function getPublicUrl(key: string): string {
+  return `${r2Config.publicDomain}/${key}`;
+}
+```
+
+## File Deletion
+
+```typescript
+// src/server/api/routers/r2Upload.ts
+deleteFile: protectedProcedure
+  .input(z.object({ url: z.string().url() }))
+  .mutation(async ({ ctx, input }) => {
+    const { url } = input;
+
+    // Extract key from URL
+    const key = url.replace(`${r2Config.publicDomain}/`, "");
+
+    // Verify ownership
+    const keyParts = key.split("/");
+    const fileUserId = keyParts[1];
+    const isOwner = fileUserId === ctx.session.user.id;
+    const isAdmin = ["admin", "super_admin"].includes(ctx.session.user.role);
+
+    if (!isOwner && !isAdmin) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "คุณไม่มีสิทธิ์ลบไฟล์นี้",
+      });
+    }
+
+    // Delete from R2
+    const command = new DeleteObjectCommand({
+      Bucket: r2Config.bucketName,
+      Key: key,
+    });
+
+    await r2Client.send(command);
+
+    return { success: true };
+  }),
+```
+
+## Drag and Drop Upload
+
+```typescript
+// src/components/FileDropzone.tsx
+"use client";
+import { useCallback } from "react";
+import { useDropzone } from "react-dropzone";
+
+export function FileDropzone({
+  onFilesSelected,
+  accept = { "image/*": [] },
+  maxFiles = 1,
+}) {
+  const onDrop = useCallback((acceptedFiles: File[]) => {
+    onFilesSelected(acceptedFiles);
+  }, [onFilesSelected]);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept,
+    maxFiles,
+  });
+
+  return (
+    <div
+      {...getRootProps()}
+      className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer
+        ${isDragActive ? "border-primary bg-primary/10" : "border-gray-300"}`}
+    >
+      <input {...getInputProps()} />
+      {isDragActive ? (
+        <p>วางไฟล์ที่นี่...</p>
+      ) : (
+        <p>ลากไฟล์มาวางหรือคลิกเพื่อเลือกไฟล์</p>
+      )}
+    </div>
+  );
+}
+```
+
+## Chapter Image Management
+
+For chapter content with reordering:
+
+```typescript
+// src/components/DraggableImageList.tsx
+"use client";
+import { DndContext, closestCenter } from "@dnd-kit/core";
+import { SortableContext, arrayMove } from "@dnd-kit/sortable";
+
+export function DraggableImageList({
+  images,
+  onReorder,
+  onRemove,
+}: {
+  images: Array<{ url: string; name: string }>;
+  onReorder: (images: Array<{ url: string; name: string }>) => void;
+  onRemove: (index: number) => void;
+}) {
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const oldIndex = images.findIndex((img) => img.url === active.id);
+      const newIndex = images.findIndex((img) => img.url === over.id);
+      onReorder(arrayMove(images, oldIndex, newIndex));
+    }
+  };
+
+  return (
+    <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext items={images.map((img) => img.url)}>
+        <div className="grid grid-cols-4 gap-4">
+          {images.map((image, index) => (
+            <SortableImage
+              key={image.url}
+              image={image}
+              onRemove={() => onRemove(index)}
+            />
+          ))}
+        </div>
+      </SortableContext>
+    </DndContext>
+  );
+}
+```
+
+## Cloudflare R2 Setup
+
+### Create Bucket
+
+<Steps>
+  <Step title="Login to Cloudflare">
+    Go to [Cloudflare Dashboard](https://dash.cloudflare.com/)
+  </Step>
+  <Step title="Navigate to R2">
+    Select R2 Object Storage from the sidebar.
+  </Step>
+  <Step title="Create Bucket">
+    Create a bucket named `lovertoon`.
+  </Step>
+  <Step title="Generate API Token">
+    Create API token with read/write access to the bucket.
+  </Step>
+</Steps>
+
+### Configure Public Access
+
+Option 1: R2 Public Bucket
+- Enable public access in bucket settings
+- Use the provided R2 domain
+
+Option 2: Custom Domain (Recommended)
+- Add custom domain in R2 settings
+- Configure DNS CNAME to R2
+
+### CORS Configuration
+
+```json
+[
+  {
+    "AllowedOrigins": ["https://lovertoon.com", "http://localhost:3000"],
+    "AllowedMethods": ["GET", "PUT", "DELETE"],
+    "AllowedHeaders": ["*"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
+## Next.js Image Optimization
+
+Configure allowed domains:
+
+```javascript
+// next.config.js
+const config = {
+  images: {
+    domains: [
+      "cdn.lovertoon.com", // R2 CDN domain
+      "utfs.io",           // UploadThing (if still used)
+    ],
+  },
+};
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Presigned URLs">
+    Always use presigned URLs for uploads. Never expose R2 credentials to clients.
+  </Accordion>
+
+  <Accordion title="File Validation">
+    Validate file type and size on both client and server.
+  </Accordion>
+
+  <Accordion title="Unique Keys">
+    Generate unique keys to prevent overwrites and enable caching.
+  </Accordion>
+
+  <Accordion title="Cleanup">
+    Delete files when content is deleted to avoid orphaned files.
+  </Accordion>
+
+  <Accordion title="CDN Caching">
+    Use appropriate cache headers for static content.
+  </Accordion>
+</AccordionGroup>

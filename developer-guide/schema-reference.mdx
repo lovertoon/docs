@@ -1,0 +1,490 @@
+---
+title: "Schema Reference"
+description: "Complete database table reference"
+---
+
+## Users & Authentication
+
+### users
+
+Core user table for all platform users.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | varchar(255) | UUID primary key |
+| `name` | varchar(255) | Display name |
+| `email` | varchar(255) | Email (required) |
+| `password` | varchar(255) | Hashed password (bcrypt) |
+| `coin` | integer | Virtual currency balance |
+| `role` | text | user, creator, creator_assistance, admin, super_admin |
+| `emailVerified` | timestamp | Email verification date |
+| `image` | varchar(255) | Profile image URL |
+| `createdAt` | timestamp | Account creation |
+| `updatedAt` | timestamp | Last update |
+
+### accounts
+
+OAuth provider accounts (NextAuth).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `userId` | varchar(255) | FK to users |
+| `type` | varchar(255) | Account type |
+| `provider` | varchar(255) | Provider name (google) |
+| `providerAccountId` | varchar(255) | Provider's user ID |
+| `refresh_token` | text | OAuth refresh token |
+| `access_token` | text | OAuth access token |
+| `expires_at` | integer | Token expiry |
+| `token_type` | varchar(255) | Token type |
+| `scope` | varchar(255) | OAuth scopes |
+| `id_token` | text | ID token |
+| `session_state` | varchar(255) | Session state |
+
+**Primary Key:** `(provider, providerAccountId)`
+
+### sessions
+
+Active user sessions.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `sessionToken` | varchar(255) | PK session token |
+| `userId` | varchar(255) | FK to users |
+| `expires` | timestamp | Expiration time |
+
+### password_reset_tokens
+
+OTP tokens for password reset.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | integer | PK |
+| `email` | varchar(255) | User email |
+| `token` | varchar(6) | 6-digit OTP |
+| `expires` | timestamp | Expiration |
+| `createdAt` | timestamp | Created |
+
+---
+
+## Creator System
+
+### creators
+
+Creator application and profile data.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | integer | PK |
+| `userId` | varchar(255) | FK to users (unique) |
+| `displayName` | varchar(255) | Public name |
+| `username` | varchar(50) | Profile URL username |
+| `bio` | text | Creator biography |
+| `portfolioLinks` | text[] | Portfolio URLs |
+| `reasonMessage` | text | Application reason |
+| `sampleWork` | text | Sample work link |
+| `commissionRate` | double | Platform fee % (default 15) |
+| `bankAccountName` | varchar(255) | Bank account holder |
+| `bankName` | varchar(100) | Bank name |
+| `bankAccountNumber` | varchar(20) | Account number |
+| `bankInfoUpdatedAt` | timestamp | Last bank update |
+| `status` | varchar(50) | pending, approved, declined, inactive |
+| `declineReason` | text | Decline reason |
+| `appliedAt` | timestamp | Application date |
+| `reviewedAt` | timestamp | Review date |
+| `reviewedBy` | varchar(255) | Admin who reviewed |
+
+### creator_follows
+
+User follows on creators.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `userId` | varchar(255) | Follower |
+| `creatorUserId` | varchar(255) | Creator being followed |
+| `followedAt` | timestamp | Follow date |
+
+**Primary Key:** `(userId, creatorUserId)`
+
+### creator_assistants
+
+Creator team members with permissions.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | integer | PK |
+| `creatorUserId` | varchar(255) | Creator |
+| `assistantUserId` | varchar(255) | Assistant (unique) |
+| `canAddComic` | boolean | Permission |
+| `canAddChapter` | boolean | Permission |
+| `canChangeComicStatus` | boolean | Permission |
+| `canChangeChapterStatus` | boolean | Permission |
+| `status` | varchar(20) | active, revoked |
+| `invitedAt` | timestamp | Invitation sent |
+| `acceptedAt` | timestamp | Invitation accepted |
+
+### assistant_invitations
+
+Pending assistant invitations.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | integer | PK |
+| `creatorUserId` | varchar(255) | Inviting creator |
+| `email` | varchar(255) | Invitee email |
+| `token` | varchar(64) | Invitation token |
+| `canAddComic` | boolean | Pre-set permission |
+| `canAddChapter` | boolean | Pre-set permission |
+| `canChangeComicStatus` | boolean | Pre-set permission |
+| `canChangeChapterStatus` | boolean | Pre-set permission |
+| `status` | varchar(20) | pending, accepted, expired, cancelled |
+| `expiresAt` | timestamp | Expiration |
+
+---
+
+## Content Management
+
+### comics
+
+Main content table for comics/novels.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | integer | PK |
+| `name` | varchar(256) | Title (unique) |
+| `slug` | varchar(256) | URL slug (unique) |
+| `englishName` | text | English title |
+| `description` | text | Synopsis |
+| `coverImage` | varchar(255) | Cover URL |
+| `comicBanner` | varchar(255) | Banner URL |
+| `uploadDays` | text[] | Update schedule |
+| `isAdult` | boolean | Adult content flag |
+| `status` | varchar(50) | draft, active |
+| `showHomeBanner` | boolean | Featured banner |
+| `showHomeCover` | boolean | Featured cover |
+| `isPinned` | boolean | Pinned story |
+| `targetAudience` | varchar(50) | Target demographic |
+| `displayMode` | varchar(20) | single, paginated |
+| `contentType` | varchar(20) | comic, novel |
+| `createdById` | varchar(255) | Creator user ID |
+
+### chapters
+
+Comic chapters with content.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | integer | PK |
+| `comicId` | integer | FK to comics |
+| `name` | varchar(256) | Chapter title |
+| `description` | text | Chapter description |
+| `coverImage` | varchar(255) | Chapter cover |
+| `contentImages` | json | Array of {url, name} |
+| `amount` | double | Price in coins |
+| `order` | integer | Sort order |
+| `orderName` | varchar(50) | Display name (e.g., "4.1") |
+| `status` | varchar(20) | draft, active |
+
+### categories
+
+Content categories/tags.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | integer | PK |
+| `name` | varchar(256) | Category name |
+| `description` | text | Description |
+| `type` | varchar(20) | Category type |
+
+### comic_categories
+
+Many-to-many junction table.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `comicId` | integer | FK to comics |
+| `categoryId` | integer | FK to categories |
+| `createdAt` | timestamp | Added date |
+
+**Primary Key:** `(comicId, categoryId)`
+
+### comments
+
+User comments on chapters.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | integer | PK |
+| `chapterId` | integer | FK to chapters |
+| `comicId` | integer | FK to comics |
+| `userId` | varchar(255) | FK to users |
+| `content` | text | Comment text |
+| `parentId` | integer | Parent comment (replies) |
+| `status` | varchar(20) | approved, pending, hidden |
+| `isEdited` | boolean | Edited flag |
+| `editedAt` | timestamp | Edit timestamp |
+
+---
+
+## User Engagement
+
+### user_favorites
+
+Bookshelf/favorites.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `userId` | varchar(255) | FK to users |
+| `comicId` | integer | FK to comics |
+| `addedAt` | timestamp | Added date |
+| `notes` | text | Personal notes |
+
+**Primary Key:** `(userId, comicId)`
+
+### chapter_views
+
+Reading history with progress.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `userId` | varchar(255) | FK to users |
+| `chapterId` | integer | FK to chapters |
+| `comicId` | integer | FK to comics |
+| `viewedAt` | timestamp | First view |
+| `lastViewedAt` | timestamp | Last view |
+| `progress` | integer | Progress % (0-100) |
+| `scrollPosition` | integer | Scroll position (px) |
+| `viewCount` | integer | View count |
+
+**Primary Key:** `(userId, chapterId)`
+
+### creator_comment_views
+
+Track creator's read comments.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `commentId` | integer | FK to comments |
+| `creatorUserId` | varchar(255) | FK to users |
+| `readAt` | timestamp | Read timestamp |
+
+**Primary Key:** `(commentId, creatorUserId)`
+
+---
+
+## Monetization
+
+### orders
+
+Chapter purchases.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | integer | PK |
+| `userId` | varchar(255) | Buyer |
+| `comicId` | integer | Comic |
+| `chapterId` | integer | Chapter |
+| `amount` | integer | Coins spent |
+| `createdAt` | timestamp | Purchase date |
+
+### topups
+
+Coin purchases via Stripe.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | integer | PK |
+| `userId` | varchar(255) | Buyer |
+| `stripeSessionId` | varchar(255) | Checkout session |
+| `stripePaymentIntentId` | varchar(255) | Payment intent |
+| `stripeEventId` | varchar(255) | Webhook event |
+| `coinAmount` | integer | Coins credited |
+| `paymentAmount` | double | Price paid |
+| `currency` | varchar(3) | Currency (THB) |
+| `status` | varchar(50) | pending, completed, failed, refunded |
+| `metadata` | json | Additional data |
+| `completedAt` | timestamp | Completion time |
+
+### stripe_webhook_events
+
+Idempotency tracking.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | varchar(255) | Stripe event ID (PK) |
+| `type` | varchar(100) | Event type |
+| `processedAt` | timestamp | Processing time |
+
+### payouts
+
+Creator earnings payouts.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | integer | PK |
+| `userId` | varchar(255) | Creator |
+| `grossAmount` | double | Before fees |
+| `platformFee` | double | Platform commission |
+| `netAmount` | double | After fees |
+| `commissionRate` | double | Rate at payout time |
+| `periodStart` | timestamp | Earnings period start |
+| `periodEnd` | timestamp | Earnings period end |
+| `status` | varchar(20) | scheduled, processing, paid, failed |
+| `stripeAccountId` | varchar(255) | Connect account |
+| `stripeTransferId` | varchar(255) | Transfer ID |
+| `stripePayoutId` | varchar(255) | Payout ID |
+| `scheduledAt` | timestamp | Scheduled time |
+| `processedAt` | timestamp | Processing time |
+| `paidAt` | timestamp | Paid time |
+| `failureCode` | varchar(100) | Error code |
+| `failureMessage` | text | Error message |
+| `metadata` | json | orderCount, comicIds, retryCount |
+
+### creator_stripe_accounts
+
+Stripe Connect accounts.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | integer | PK |
+| `userId` | varchar(255) | Creator (unique) |
+| `stripeAccountId` | varchar(255) | acct_xxx (unique) |
+| `onboardingComplete` | boolean | Onboarding done |
+| `chargesEnabled` | boolean | Can receive charges |
+| `payoutsEnabled` | boolean | Can receive payouts |
+| `defaultCurrency` | varchar(3) | THB |
+| `country` | varchar(2) | TH |
+| `payoutSchedule` | varchar(20) | daily, weekly, monthly |
+| `businessType` | varchar(50) | individual, company |
+| `onboardingStartedAt` | timestamp | Started |
+| `onboardingCompletedAt` | timestamp | Completed |
+
+---
+
+## PASS System
+
+### user_passes
+
+User PASS subscriptions.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | integer | PK |
+| `userId` | varchar(255) | Subscriber |
+| `passType` | varchar(20) | 30_day, 90_day |
+| `coinsPaid` | integer | 50 or 120 |
+| `startDate` | timestamp | Start |
+| `endDate` | timestamp | End |
+| `status` | varchar(20) | active, expired |
+
+### creator_passes
+
+Creator PASS enrollments.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | integer | PK |
+| `userId` | varchar(255) | Creator (unique) |
+| `termsAcceptedAt` | timestamp | Terms accepted |
+| `enrollmentStartDate` | timestamp | Day after joining |
+| `status` | varchar(20) | active, inactive |
+
+### hot_story_promotions
+
+Creator PASS Hot Story promotions.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | integer | PK |
+| `comicId` | integer | Promoted comic |
+| `creatorPassId` | integer | Creator PASS |
+| `promotedAt` | timestamp | Promotion start |
+| `expiresAt` | timestamp | +24 hours |
+| `status` | varchar(20) | active, expired |
+
+---
+
+## Promotion System
+
+### promotions
+
+Homepage promotion slots.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | integer | PK |
+| `comicId` | integer | Promoted comic |
+| `type` | varchar(20) | banner, small_cover, pinned_story |
+| `order` | integer | Display order |
+| `source` | varchar(20) | admin_picked, bid_winner |
+| `periodId` | integer | Bidding period |
+
+### promotion_periods
+
+Bidding cycles.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | integer | PK |
+| `promotionType` | varchar(20) | Type |
+| `periodType` | varchar(10) | weekly, daily |
+| `displayStartDate` | timestamp | Display starts |
+| `displayEndDate` | timestamp | Display ends |
+| `biddingStartDate` | timestamp | Bidding opens |
+| `biddingEndDate` | timestamp | Bidding closes |
+| `paymentStartDate` | timestamp | Payment opens |
+| `paymentEndDate` | timestamp | Payment closes |
+| `status` | varchar(20) | upcoming, bidding, payment, active, completed |
+| `winnersSelectedAt` | timestamp | Winners selected |
+| `paymentsProcessedAt` | timestamp | Payments done |
+
+### promotion_bids
+
+Creator bids.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | integer | PK |
+| `comicId` | integer | Comic |
+| `creatorId` | varchar(255) | Creator |
+| `promotionType` | varchar(20) | Type |
+| `periodId` | integer | Period |
+| `bidAmount` | integer | Coins bid |
+| `status` | varchar(20) | active, won, lost, cancelled, paid |
+| `rank` | integer | Final rank |
+| `paidAt` | timestamp | Payment time |
+
+---
+
+## Free Reading Codes
+
+### free_reading_codes
+
+Creator-generated promotional codes.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | integer | PK |
+| `code` | varchar(50) | Code string (unique) |
+| `creatorUserId` | varchar(255) | Owner |
+| `scopeType` | varchar(20) | chapter, comic, all_creator_comics |
+| `targetChapterId` | integer | For chapter scope |
+| `targetComicId` | integer | For comic/chapter scope |
+| `durationHours` | integer | 1-72 hours |
+| `expiresAt` | timestamp | Expiration |
+| `status` | varchar(20) | active, expired, used, revoked |
+| `redeemedByUserId` | varchar(255) | Redeemer |
+| `redeemedAt` | timestamp | Redemption time |
+| `source` | varchar(20) | creator, admin |
+| `notes` | text | Creator notes |
+
+### free_reading_code_settings
+
+System settings for codes.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | integer | PK |
+| `key` | varchar(100) | Setting key (unique) |
+| `value` | text | Setting value |
+| `description` | text | Description |
+| `updatedBy` | varchar(255) | Last editor |

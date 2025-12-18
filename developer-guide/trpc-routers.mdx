@@ -1,0 +1,364 @@
+---
+title: "tRPC Routers"
+description: "Complete reference of all API routers"
+---
+
+## Overview
+
+Lovertoon has 27 tRPC routers organized by domain. All routers are combined in `src/server/api/root.ts`.
+
+## Router Categories
+
+### Content Management
+
+| Router | Description | File |
+|--------|-------------|------|
+| `comic` | Comic CRUD operations | `routers/comic.ts` |
+| `chapter` | Chapter management | `routers/chapter.ts` |
+| `category` | Categories/tags | `routers/category.ts` |
+| `comment` | Comments system | `routers/comment.ts` |
+
+### User & Authentication
+
+| Router | Description | File |
+|--------|-------------|------|
+| `auth` | Auth operations | `routers/auth.ts` |
+| `user` | User profile | `routers/user.ts` |
+| `userManagement` | Admin user management | `routers/userManagement.ts` |
+
+### Creator Features
+
+| Router | Description | File |
+|--------|-------------|------|
+| `creator` | Creator applications | `routers/creator.ts` |
+| `creatorProfile` | Creator public profile | `routers/creatorProfile.ts` |
+| `creatorAssistant` | Team management | `routers/creatorAssistant.ts` |
+| `creatorPass` | Creator PASS enrollment | `routers/creatorPass.ts` |
+
+### Monetization
+
+| Router | Description | File |
+|--------|-------------|------|
+| `purchase` | Chapter purchases | `routers/purchase.ts` |
+| `order` | Order history | `routers/order.ts` |
+| `topup` | Coin top-ups | `routers/topup.ts` |
+| `stripe` | Stripe integration | `routers/stripe.ts` |
+| `payout` | Creator payouts | `routers/payout.ts` |
+
+### User Features
+
+| Router | Description | File |
+|--------|-------------|------|
+| `favorites` | Bookshelf/favorites | `routers/favorites.ts` |
+| `chapterView` | Reading history | `routers/chapterView.ts` |
+| `pass` | User PASS subscription | `routers/pass.ts` |
+| `freeReadingCode` | Free reading codes | `routers/freeReadingCode.ts` |
+
+### Analytics & Dashboard
+
+| Router | Description | File |
+|--------|-------------|------|
+| `dashboard` | Dashboard stats | `routers/dashboard.ts` |
+| `comicAnalytics` | Comic analytics | `routers/comicAnalytics.ts` |
+
+### Promotion System
+
+| Router | Description | File |
+|--------|-------------|------|
+| `promotion` | Homepage promotions | `routers/promotion.ts` |
+| `promotionBidding` | Promotion bidding | `routers/promotionBidding.ts` |
+| `hotStories` | Hot Stories feature | `routers/hotStories.ts` |
+
+### File Upload
+
+| Router | Description | File |
+|--------|-------------|------|
+| `r2Upload` | Cloudflare R2 uploads | `routers/r2Upload.ts` |
+
+---
+
+## Router Details
+
+### comic
+
+```typescript
+comic.getAll          // Get all comics (with filters)
+comic.getBySlug       // Get comic by URL slug
+comic.getById         // Get comic by ID
+comic.search          // Search comics
+comic.create          // Create new comic (creator)
+comic.update          // Update comic (creator)
+comic.delete          // Delete comic (creator)
+comic.getCreatorComics // Get creator's comics
+comic.updateStatus    // Change comic status
+```
+
+### chapter
+
+```typescript
+chapter.getByComic     // Get chapters for comic
+chapter.getById        // Get chapter details
+chapter.create         // Create chapter (creator)
+chapter.update         // Update chapter (creator)
+chapter.delete         // Delete chapter (creator)
+chapter.updateOrder    // Reorder chapters
+chapter.updateStatus   // Change chapter status
+chapter.getContent     // Get chapter content (auth + purchase check)
+```
+
+### user
+
+```typescript
+user.getCurrent       // Get current user
+user.updateProfile    // Update profile
+user.updatePassword   // Change password
+user.getCoins         // Get coin balance
+```
+
+### favorites
+
+```typescript
+favorites.getAll      // Get user's favorites
+favorites.check       // Check if comic is favorited
+favorites.toggle      // Add/remove favorite
+favorites.add         // Add to favorites
+favorites.remove      // Remove from favorites
+```
+
+### chapterView
+
+```typescript
+chapterView.record         // Record chapter view
+chapterView.updateProgress // Update reading progress
+chapterView.getHistory     // Get reading history
+chapterView.getLastRead    // Get last read chapter
+chapterView.clearHistory   // Clear reading history
+```
+
+### purchase
+
+```typescript
+purchase.purchaseChapter  // Buy chapter with coins
+purchase.checkPurchase    // Check if chapter purchased
+purchase.getPurchases     // Get purchase history
+```
+
+### order
+
+```typescript
+order.getAll           // Get all orders (admin)
+order.getByUser        // Get user's orders
+order.getByCreator     // Get creator's sales
+order.getStats         // Order statistics
+```
+
+### topup
+
+```typescript
+topup.getPackages      // Get coin packages
+topup.getHistory       // Get topup history
+topup.getByUser        // Admin: get user's topups
+```
+
+### stripe
+
+```typescript
+stripe.createCheckoutSession  // Create Stripe checkout
+stripe.getPortalUrl           // Stripe customer portal
+```
+
+### creator
+
+```typescript
+creator.apply          // Submit creator application
+creator.getMyApplication // Get application status
+creator.getAll         // Admin: get all applications
+creator.approve        // Admin: approve application
+creator.decline        // Admin: decline application
+creator.updateProfile  // Update creator profile
+creator.updateBankInfo // Update bank details
+```
+
+### creatorAssistant
+
+```typescript
+creatorAssistant.getAssistants    // Get team members
+creatorAssistant.invite           // Send invitation
+creatorAssistant.updatePermissions // Update permissions
+creatorAssistant.revoke           // Revoke assistant
+creatorAssistant.getPendingInvites // Get pending invitations
+creatorAssistant.acceptInvite     // Accept invitation
+creatorAssistant.declineInvite    // Decline invitation
+```
+
+### pass
+
+```typescript
+pass.getPlans          // Get PASS plans
+pass.purchase          // Buy PASS subscription
+pass.getActivePass     // Get active PASS
+pass.checkDiscount     // Check PASS discount for chapter
+```
+
+### creatorPass
+
+```typescript
+creatorPass.enroll        // Join Creator PASS
+creatorPass.getStatus     // Get enrollment status
+creatorPass.leave         // Leave Creator PASS
+creatorPass.promoteHotStory // Promote to Hot Stories
+```
+
+### freeReadingCode
+
+```typescript
+freeReadingCode.create     // Create free code
+freeReadingCode.getAll     // Get creator's codes
+freeReadingCode.revoke     // Revoke code
+freeReadingCode.redeem     // User: redeem code
+freeReadingCode.validate   // Validate code
+freeReadingCode.getStats   // Code statistics
+```
+
+### promotion
+
+```typescript
+promotion.getHomepage      // Get homepage promotions
+promotion.getBanners       // Get banner promotions
+promotion.getCovers        // Get cover promotions
+promotion.getPinned        // Get pinned stories
+promotion.update           // Admin: update promotions
+```
+
+### promotionBidding
+
+```typescript
+promotionBidding.getCurrentPeriods  // Get active periods
+promotionBidding.placeBid           // Place a bid
+promotionBidding.updateBid          // Update bid amount
+promotionBidding.cancelBid          // Cancel bid
+promotionBidding.getMyBids          // Get creator's bids
+promotionBidding.payForWinningBid   // Pay for won bid
+promotionBidding.getLeaderboard     // Current bid rankings
+```
+
+### hotStories
+
+```typescript
+hotStories.getActive       // Get active hot stories
+hotStories.promote         // Promote comic (Creator PASS)
+hotStories.checkEligibility // Check if can promote
+```
+
+### dashboard
+
+```typescript
+dashboard.getAdminStats    // Admin dashboard stats
+dashboard.getCreatorStats  // Creator dashboard stats
+dashboard.getRevenueChart  // Revenue over time
+```
+
+### comicAnalytics
+
+```typescript
+comicAnalytics.getViews       // View statistics
+comicAnalytics.getRevenue     // Revenue statistics
+comicAnalytics.getTopChapters // Best performing chapters
+comicAnalytics.getReaders     // Reader demographics
+```
+
+### r2Upload
+
+```typescript
+r2Upload.getPresignedUrl   // Get upload URL
+r2Upload.deleteFile        // Delete uploaded file
+```
+
+---
+
+## Creating a New Router
+
+### 1. Create Router File
+
+```typescript
+// src/server/api/routers/example.ts
+import { z } from "zod";
+import { createTRPCRouter, publicProcedure, protectedProcedure } from "~/server/api/trpc";
+import { examples } from "~/server/db/schema";
+import { eq } from "drizzle-orm";
+
+export const exampleRouter = createTRPCRouter({
+  getAll: publicProcedure.query(async ({ ctx }) => {
+    return ctx.db.query.lovertoonExamples.findMany();
+  }),
+
+  getById: publicProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ ctx, input }) => {
+      return ctx.db.query.lovertoonExamples.findFirst({
+        where: eq(examples.id, input.id),
+      });
+    }),
+
+  create: protectedProcedure
+    .input(z.object({ name: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.insert(examples).values({
+        ...input,
+        createdById: ctx.session.user.id,
+      }).returning();
+    }),
+});
+```
+
+### 2. Register in Root Router
+
+```typescript
+// src/server/api/root.ts
+import { exampleRouter } from "./routers/example";
+
+export const appRouter = createTRPCRouter({
+  // ... existing routers
+  example: exampleRouter,
+});
+```
+
+### 3. Use in Components
+
+```typescript
+// Server Component
+const examples = await api.example.getAll.query();
+
+// Client Component
+const { data } = api.example.getAll.useQuery();
+const create = api.example.create.useMutation();
+```
+
+## Router Best Practices
+
+<AccordionGroup>
+  <Accordion title="Single Responsibility">
+    Each router should handle one domain/feature.
+  </Accordion>
+
+  <Accordion title="Consistent Naming">
+    - `getAll`, `getById`, `getBySlug` for queries
+    - `create`, `update`, `delete` for mutations
+    - Prefix with context: `getByUser`, `getByCreator`
+  </Accordion>
+
+  <Accordion title="Validate All Input">
+    Always use Zod schemas for input validation.
+  </Accordion>
+
+  <Accordion title="Use Appropriate Procedures">
+    - `publicProcedure` for public data
+    - `protectedProcedure` for user actions
+    - `adminProcedure` for admin operations
+    - `creatorProcedure` for creator actions
+  </Accordion>
+
+  <Accordion title="Handle Errors Gracefully">
+    Use TRPCError with appropriate codes and Thai messages.
+  </Accordion>
+</AccordionGroup>

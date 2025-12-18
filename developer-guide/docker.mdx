@@ -1,0 +1,355 @@
+---
+title: "Docker Setup"
+description: "Containerized development and deployment"
+---
+
+## Overview
+
+Lovertoon uses Docker for local PostgreSQL development. This guide covers both local development and optional production containerization.
+
+## Local Database (Development)
+
+### Starting PostgreSQL
+
+Use the provided script to start a PostgreSQL container:
+
+```bash
+./start-database.sh
+```
+
+This script:
+1. Reads `DATABASE_URL` from `.env`
+2. Extracts database credentials
+3. Creates a PostgreSQL container with the correct settings
+
+### Script Details
+
+```bash
+#!/usr/bin/env bash
+# start-database.sh
+
+# Load environment variables
+source .env
+
+# Extract database info from DATABASE_URL
+DB_PASSWORD=$(echo "$DATABASE_URL" | awk -F':' '{print $3}' | awk -F'@' '{print $1}')
+DB_PORT=$(echo "$DATABASE_URL" | awk -F':' '{print $4}' | awk -F'\/' '{print $1}')
+DB_NAME=$(echo "$DATABASE_URL" | awk -F'/' '{print $4}')
+DB_CONTAINER_NAME="$DB_NAME-postgres"
+
+# Start container
+docker run -d \
+  --name $DB_CONTAINER_NAME \
+  -e POSTGRES_USER="postgres" \
+  -e POSTGRES_PASSWORD="$DB_PASSWORD" \
+  -e POSTGRES_DB="$DB_NAME" \
+  -p "$DB_PORT":5432 \
+  docker.io/postgres
+```
+
+### Database URL Format
+
+```bash
+# .env
+DATABASE_URL="postgresql://postgres:password@localhost:5432/lovertoon"
+```
+
+Components:
+- `postgres` - Username
+- `password` - Password
+- `localhost` - Host
+- `5432` - Port
+- `lovertoon` - Database name
+
+### Managing the Container
+
+```bash
+# Check running containers
+docker ps
+
+# Stop the database
+docker stop lovertoon-postgres
+
+# Start again
+docker start lovertoon-postgres
+
+# Remove container (data lost)
+docker rm lovertoon-postgres
+
+# View logs
+docker logs lovertoon-postgres
+```
+
+## Docker Compose (Optional)
+
+For a more complete setup:
+
+```yaml
+# docker-compose.yml
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    container_name: lovertoon-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
+      POSTGRES_DB: lovertoon
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+```
+
+### Using Docker Compose
+
+```bash
+# Start services
+docker compose up -d
+
+# Stop services
+docker compose down
+
+# View logs
+docker compose logs -f db
+
+# Reset database
+docker compose down -v
+docker compose up -d
+```
+
+## Production Dockerfile (Optional)
+
+If you need to containerize the Next.js application:
+
+```dockerfile
+# Dockerfile
+FROM oven/bun:1 AS base
+
+# Install dependencies
+FROM base AS deps
+WORKDIR /app
+COPY package.json bun.lock* ./
+RUN bun install --frozen-lockfile
+
+# Build the application
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+# Skip env validation during build
+ENV SKIP_ENV_VALIDATION=true
+ENV NEXT_TELEMETRY_DISABLED=1
+
+RUN bun run build
+
+# Production image
+FROM base AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+COPY --from=builder /app/public ./public
+
+# Copy build output
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+USER nextjs
+
+EXPOSE 3000
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+CMD ["bun", "server.js"]
+```
+
+### Next.js Standalone Output
+
+Enable standalone output in `next.config.js`:
+
+```javascript
+const config = {
+  output: "standalone",
+};
+
+module.exports = config;
+```
+
+### Build and Run
+
+```bash
+# Build image
+docker build -t lovertoon .
+
+# Run container
+docker run -p 3000:3000 \
+  -e DATABASE_URL="..." \
+  -e AUTH_SECRET="..." \
+  -e AUTH_GOOGLE_ID="..." \
+  -e AUTH_GOOGLE_SECRET="..." \
+  # ... other env vars
+  lovertoon
+```
+
+## Full Stack Docker Compose
+
+Complete setup with app and database:
+
+```yaml
+# docker-compose.prod.yml
+version: "3.9"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://postgres:${DB_PASSWORD}@db:5432/lovertoon
+      AUTH_SECRET: ${AUTH_SECRET}
+      AUTH_URL: ${AUTH_URL}
+      AUTH_GOOGLE_ID: ${AUTH_GOOGLE_ID}
+      AUTH_GOOGLE_SECRET: ${AUTH_GOOGLE_SECRET}
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY}
+      R2_BUCKET_NAME: ${R2_BUCKET_NAME}
+      R2_PUBLIC_DOMAIN: ${R2_PUBLIC_DOMAIN}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      CRON_SECRET: ${CRON_SECRET}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: lovertoon
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+```
+
+### Usage
+
+```bash
+# Create .env file with all variables
+cp .env.example .env
+
+# Start everything
+docker compose -f docker-compose.prod.yml up -d
+
+# Run migrations
+docker compose -f docker-compose.prod.yml exec app bun run db:migrate
+
+# View logs
+docker compose -f docker-compose.prod.yml logs -f
+```
+
+## Podman Support
+
+The start-database.sh script also supports Podman:
+
+```bash
+# If Docker not installed, uses Podman
+if [ -x "$(command -v docker)" ]; then
+  DOCKER_CMD="docker"
+elif [ -x "$(command -v podman)" ]; then
+  DOCKER_CMD="podman"
+fi
+```
+
+## Troubleshooting
+
+### Port Already in Use
+
+```bash
+# Check what's using port 5432
+lsof -i :5432
+
+# Use a different port in DATABASE_URL
+DATABASE_URL="postgresql://postgres:password@localhost:5433/lovertoon"
+```
+
+### Permission Denied
+
+```bash
+# Make script executable
+chmod +x start-database.sh
+
+# On Linux, you may need to add user to docker group
+sudo usermod -aG docker $USER
+```
+
+### Container Won't Start
+
+```bash
+# Check logs
+docker logs lovertoon-postgres
+
+# Remove and recreate
+docker rm lovertoon-postgres
+./start-database.sh
+```
+
+### Connection Refused
+
+1. Check container is running: `docker ps`
+2. Verify port mapping: `docker port lovertoon-postgres`
+3. Test connection: `psql postgresql://postgres:password@localhost:5432/lovertoon`
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Volumes for Data">
+    Always mount volumes to persist database data between container restarts.
+  </Accordion>
+
+  <Accordion title="Health Checks">
+    Add health checks to ensure database is ready before app starts.
+  </Accordion>
+
+  <Accordion title="Non-Root User">
+    Run containers as non-root user in production for security.
+  </Accordion>
+
+  <Accordion title="Multi-Stage Builds">
+    Use multi-stage builds to minimize production image size.
+  </Accordion>
+
+  <Accordion title="Environment Files">
+    Use `.env` files for local development, environment variables for production.
+  </Accordion>
+</AccordionGroup>

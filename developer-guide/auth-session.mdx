@@ -1,0 +1,361 @@
+---
+title: "Session Handling"
+description: "Session management and callbacks"
+---
+
+## Session Strategy
+
+Lovertoon uses **database sessions** rather than JWT-only sessions:
+
+```typescript
+// src/server/auth/config.ts
+export const authConfig = {
+  adapter: DrizzleAdapter(db),
+  session: {
+    strategy: "database", // Sessions stored in PostgreSQL
+    maxAge: 30 * 24 * 60 * 60, // 30 days
+    updateAge: 24 * 60 * 60, // Update session every 24 hours
+  },
+};
+```
+
+### Why Database Sessions?
+
+| Feature | Database | JWT |
+|---------|----------|-----|
+| Revocation | Instant | Wait for expiry |
+| Size | Small cookie | Large cookie |
+| Server load | DB queries | None |
+| Session data | Unlimited | Limited |
+| Logout all | Easy | Complex |
+
+## Session Callbacks
+
+### Session Callback
+
+Extends session with custom data:
+
+```typescript
+callbacks: {
+  async session({ session, user }) {
+    // Get fresh user data from database
+    const dbUser = await db.query.lovertoonUsers.findFirst({
+      where: eq(users.id, user.id),
+    });
+
+    return {
+      ...session,
+      user: {
+        ...session.user,
+        id: user.id,
+        coin: dbUser?.coin ?? 0,
+        role: (dbUser?.role ?? "user") as UserRole,
+      },
+    };
+  },
+}
+```
+
+### SignIn Callback
+
+Controls who can sign in:
+
+```typescript
+callbacks: {
+  async signIn({ user, account, profile }) {
+    // Block banned users
+    const dbUser = await db.query.lovertoonUsers.findFirst({
+      where: eq(users.email, user.email!),
+    });
+
+    if (dbUser?.status === "banned") {
+      return false; // Reject sign in
+    }
+
+    return true; // Allow sign in
+  },
+}
+```
+
+### JWT Callback (if using JWT)
+
+```typescript
+callbacks: {
+  async jwt({ token, user, account }) {
+    if (user) {
+      token.id = user.id;
+      token.role = user.role;
+    }
+    return token;
+  },
+}
+```
+
+### Redirect Callback
+
+Controls where users are redirected:
+
+```typescript
+callbacks: {
+  async redirect({ url, baseUrl }) {
+    // Only allow internal redirects
+    if (url.startsWith(baseUrl)) {
+      return url;
+    }
+    return baseUrl;
+  },
+}
+```
+
+## Getting Session
+
+### Server Components
+
+```typescript
+import { auth } from "~/server/auth";
+
+export default async function Page() {
+  const session = await auth();
+
+  if (!session) {
+    return <div>Not logged in</div>;
+  }
+
+  return <div>Welcome {session.user.name}</div>;
+}
+```
+
+### Server Actions
+
+```typescript
+"use server";
+import { auth } from "~/server/auth";
+
+export async function myServerAction() {
+  const session = await auth();
+
+  if (!session) {
+    throw new Error("Unauthorized");
+  }
+
+  // Proceed with authenticated action
+}
+```
+
+### API Routes
+
+```typescript
+// src/app/api/example/route.ts
+import { auth } from "~/server/auth";
+import { NextResponse } from "next/server";
+
+export async function GET() {
+  const session = await auth();
+
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  return NextResponse.json({ user: session.user });
+}
+```
+
+### Client Components
+
+```typescript
+"use client";
+import { useSession } from "next-auth/react";
+
+export function UserInfo() {
+  const { data: session, status } = useSession();
+
+  if (status === "loading") {
+    return <Skeleton />;
+  }
+
+  if (status === "unauthenticated") {
+    return <LoginButton />;
+  }
+
+  return (
+    <div>
+      <p>Name: {session.user.name}</p>
+      <p>Coins: {session.user.coin}</p>
+      <p>Role: {session.user.role}</p>
+    </div>
+  );
+}
+```
+
+### tRPC Context
+
+```typescript
+// Session automatically available in ctx
+.query(async ({ ctx }) => {
+  const { session } = ctx;
+
+  if (!session?.user) {
+    throw new TRPCError({ code: "UNAUTHORIZED" });
+  }
+
+  return { userId: session.user.id };
+});
+```
+
+## Session Provider
+
+Wrap your app with SessionProvider for client-side access:
+
+```typescript
+// src/app/layout.tsx
+import { SessionProvider } from "next-auth/react";
+
+export default function RootLayout({ children }) {
+  return (
+    <html>
+      <body>
+        <SessionProvider>{children}</SessionProvider>
+      </body>
+    </html>
+  );
+}
+```
+
+## Session Updates
+
+### Refresh Session
+
+Force session refresh after changes:
+
+```typescript
+"use client";
+import { useSession } from "next-auth/react";
+
+export function AfterPurchase() {
+  const { update } = useSession();
+
+  const handlePurchase = async () => {
+    await purchaseChapter();
+
+    // Refresh session to get updated coin balance
+    await update();
+  };
+
+  return <button onClick={handlePurchase}>Purchase</button>;
+}
+```
+
+### Update Session Data
+
+```typescript
+// After changing user data, session updates on next request
+// Or force update:
+import { useSession } from "next-auth/react";
+
+const { update } = useSession();
+
+// Triggers session callback to refresh data
+await update();
+```
+
+## Session Events
+
+```typescript
+// src/server/auth/config.ts
+events: {
+  async signIn({ user, account, isNewUser }) {
+    if (isNewUser) {
+      // Send welcome email
+      await sendWelcomeEmail(user.email);
+    }
+  },
+
+  async signOut({ token }) {
+    // Clean up user-specific resources
+    console.log("User signed out:", token.sub);
+  },
+
+  async createUser({ user }) {
+    // Initialize user resources
+    console.log("New user created:", user.id);
+  },
+
+  async linkAccount({ user, account }) {
+    // Account linked (OAuth added)
+    console.log("Account linked:", account.provider);
+  },
+}
+```
+
+## Extended Session Types
+
+### Type Definitions
+
+```typescript
+// src/types/next-auth.d.ts
+import { type DefaultSession } from "next-auth";
+
+declare module "next-auth" {
+  interface Session extends DefaultSession {
+    user: {
+      id: string;
+      coin: number;
+      role: "user" | "creator" | "creator_assistance" | "admin" | "super_admin";
+    } & DefaultSession["user"];
+  }
+
+  interface User {
+    coin: number;
+    role: string;
+  }
+}
+```
+
+### Usage with Types
+
+```typescript
+import { type Session } from "next-auth";
+
+function handleSession(session: Session) {
+  // TypeScript knows these properties exist
+  console.log(session.user.coin);
+  console.log(session.user.role);
+}
+```
+
+## Session Security
+
+<AccordionGroup>
+  <Accordion title="CSRF Protection">
+    NextAuth uses CSRF tokens for all mutations.
+  </Accordion>
+
+  <Accordion title="Session Fixation">
+    New session ID generated on login.
+  </Accordion>
+
+  <Accordion title="Cookie Security">
+    - `httpOnly`: Can't be accessed by JavaScript
+    - `secure`: Only sent over HTTPS
+    - `sameSite`: Prevents CSRF
+  </Accordion>
+
+  <Accordion title="Session Expiry">
+    Sessions expire after 30 days of inactivity.
+  </Accordion>
+</AccordionGroup>
+
+## Debugging Sessions
+
+```typescript
+// Log session state
+const session = await auth();
+console.log("Session:", JSON.stringify(session, null, 2));
+
+// Check cookies
+// Browser DevTools → Application → Cookies
+// Look for `next-auth.session-token`
+
+// Database sessions
+// Drizzle Studio → lovertoon_session table
+```

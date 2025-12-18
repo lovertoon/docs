@@ -1,0 +1,348 @@
+---
+title: "tRPC Overview"
+description: "Type-safe API layer with tRPC 11"
+---
+
+## What is tRPC?
+
+tRPC (TypeScript Remote Procedure Call) is a framework for building type-safe APIs without schemas or code generation. Types flow from server to client automatically.
+
+## Why tRPC?
+
+| Feature | tRPC | REST | GraphQL |
+|---------|------|------|---------|
+| Type Safety | Full end-to-end | Manual | Code generation |
+| Schema | None (TypeScript) | OpenAPI | SDL |
+| Overfetching | No (define returns) | Common | No |
+| Learning Curve | Low | Low | Medium |
+| Caching | React Query | Manual | Apollo/Relay |
+
+## Architecture
+
+```
+Client (React)                    Server (Next.js)
+     │                                  │
+     │  useQuery({ id: 1 })             │
+     │  ──────────────────────────►     │
+     │                                  │
+     │     HTTP POST /api/trpc/...      │
+     │  ◄──────────────────────────     │
+     │                                  │
+     │  { data: Comic }                 │
+     │  (fully typed!)                  │
+     │                                  │
+```
+
+## Key Concepts
+
+### Procedures
+
+A procedure is a function exposed over the network:
+
+```typescript
+// Query - Read data (GET-like)
+getById: publicProcedure
+  .input(z.object({ id: z.number() }))
+  .query(async ({ ctx, input }) => {
+    return ctx.db.query.lovertoonComics.findFirst({
+      where: eq(comics.id, input.id),
+    });
+  }),
+
+// Mutation - Write data (POST-like)
+create: protectedProcedure
+  .input(createComicSchema)
+  .mutation(async ({ ctx, input }) => {
+    return ctx.db.insert(comics).values(input).returning();
+  }),
+```
+
+### Routers
+
+Routers group related procedures:
+
+```typescript
+export const comicRouter = createTRPCRouter({
+  getAll: publicProcedure.query(...),
+  getById: publicProcedure.input(...).query(...),
+  create: protectedProcedure.input(...).mutation(...),
+  update: protectedProcedure.input(...).mutation(...),
+  delete: protectedProcedure.input(...).mutation(...),
+});
+```
+
+### Context
+
+Every procedure receives context:
+
+```typescript
+type Context = {
+  db: DrizzleClient;        // Database access
+  session: Session | null;  // User session (null if not logged in)
+  headers: Headers;         // Request headers
+};
+
+// Accessed in procedure
+.query(async ({ ctx }) => {
+  const user = ctx.session?.user;
+  const data = await ctx.db.query...
+});
+```
+
+## Setup Overview
+
+### Server Configuration
+
+```typescript
+// src/server/api/trpc.ts
+import { initTRPC, TRPCError } from "@trpc/server";
+import superjson from "superjson";
+
+const t = initTRPC.context<typeof createTRPCContext>().create({
+  transformer: superjson, // Handles Dates, Maps, etc.
+});
+
+export const createTRPCRouter = t.router;
+export const publicProcedure = t.procedure;
+```
+
+### Root Router
+
+```typescript
+// src/server/api/root.ts
+export const appRouter = createTRPCRouter({
+  comic: comicRouter,
+  chapter: chapterRouter,
+  user: userRouter,
+  // ... 24 more routers
+});
+
+export type AppRouter = typeof appRouter;
+```
+
+### Client Setup
+
+```typescript
+// src/trpc/react.tsx (Client Components)
+import { createTRPCReact } from "@trpc/react-query";
+export const api = createTRPCReact<AppRouter>();
+
+// src/trpc/server.ts (Server Components)
+import { createCaller } from "~/server/api/root";
+export const api = createCaller(createContext);
+```
+
+## Usage Patterns
+
+### Server Component
+
+```typescript
+// src/app/(home)/comics/[slug]/page.tsx
+import { api } from "~/trpc/server";
+
+export default async function ComicPage({ params }) {
+  // Direct server-side call
+  const comic = await api.comic.getBySlug.query({ slug: params.slug });
+
+  return <ComicDetail comic={comic} />;
+}
+```
+
+### Client Component - Query
+
+```typescript
+"use client";
+import { api } from "~/trpc/react";
+
+export function ComicList() {
+  const { data, isLoading, error } = api.comic.getAll.useQuery({
+    status: "active",
+  });
+
+  if (isLoading) return <Spinner />;
+  if (error) return <Error message={error.message} />;
+
+  return data?.map(comic => <ComicCard key={comic.id} comic={comic} />);
+}
+```
+
+### Client Component - Mutation
+
+```typescript
+"use client";
+import { api } from "~/trpc/react";
+
+export function CreateComicButton() {
+  const utils = api.useUtils();
+
+  const create = api.comic.create.useMutation({
+    onSuccess: () => {
+      utils.comic.getAll.invalidate();
+      toast.success("สร้างการ์ตูนสำเร็จ");
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+
+  return (
+    <button
+      onClick={() => create.mutate({ name: "New Comic", slug: "new-comic" })}
+      disabled={create.isPending}
+    >
+      {create.isPending ? "Creating..." : "Create"}
+    </button>
+  );
+}
+```
+
+## SuperJSON Transformer
+
+tRPC uses SuperJSON for automatic serialization:
+
+```typescript
+// Dates work automatically
+const comic = await api.comic.getById.query({ id: 1 });
+console.log(comic.createdAt instanceof Date); // true
+
+// No manual JSON.parse/stringify needed
+```
+
+Supported types:
+- `Date`
+- `Map` and `Set`
+- `BigInt`
+- `undefined`
+- `RegExp`
+- `Error`
+
+## Error Handling
+
+### Throwing Errors
+
+```typescript
+import { TRPCError } from "@trpc/server";
+
+.query(async ({ ctx, input }) => {
+  const comic = await ctx.db.query.lovertoonComics.findFirst({
+    where: eq(comics.id, input.id),
+  });
+
+  if (!comic) {
+    throw new TRPCError({
+      code: "NOT_FOUND",
+      message: "ไม่พบการ์ตูนที่ต้องการ",
+    });
+  }
+
+  return comic;
+});
+```
+
+### Handling Errors
+
+```typescript
+const { data, error } = api.comic.getById.useQuery({ id: 999 });
+
+if (error) {
+  if (error.data?.code === "NOT_FOUND") {
+    return <NotFound />;
+  }
+  if (error.data?.code === "UNAUTHORIZED") {
+    return <LoginPrompt />;
+  }
+  return <GenericError />;
+}
+```
+
+### Error Codes
+
+| Code | HTTP | Description |
+|------|------|-------------|
+| `BAD_REQUEST` | 400 | Invalid input |
+| `UNAUTHORIZED` | 401 | Not authenticated |
+| `FORBIDDEN` | 403 | No permission |
+| `NOT_FOUND` | 404 | Resource not found |
+| `TIMEOUT` | 408 | Request timeout |
+| `CONFLICT` | 409 | Resource conflict |
+| `PRECONDITION_FAILED` | 412 | Condition not met |
+| `PAYLOAD_TOO_LARGE` | 413 | Request too large |
+| `UNPROCESSABLE_CONTENT` | 422 | Validation failed |
+| `TOO_MANY_REQUESTS` | 429 | Rate limited |
+| `CLIENT_CLOSED_REQUEST` | 499 | Client disconnected |
+| `INTERNAL_SERVER_ERROR` | 500 | Server error |
+
+## React Query Integration
+
+tRPC hooks are powered by TanStack Query:
+
+```typescript
+// All React Query options available
+const { data } = api.comic.getAll.useQuery(
+  { status: "active" },
+  {
+    staleTime: 5 * 60 * 1000,     // 5 minutes
+    cacheTime: 30 * 60 * 1000,    // 30 minutes
+    refetchOnWindowFocus: true,
+    enabled: !!userId,             // Conditional fetch
+    onSuccess: (data) => console.log(data),
+  }
+);
+
+// Prefetching
+const utils = api.useUtils();
+utils.comic.getBySlug.prefetch({ slug: "one-piece" });
+
+// Cache invalidation
+utils.comic.getAll.invalidate();
+```
+
+## File Structure
+
+```
+src/server/api/
+├── root.ts           # Root router (combines all routers)
+├── trpc.ts           # tRPC configuration & procedures
+└── routers/          # Domain-specific routers
+    ├── comic.ts
+    ├── chapter.ts
+    ├── user.ts
+    └── ... (27 total)
+
+src/trpc/
+├── react.tsx         # Client-side hooks
+├── server.ts         # Server-side caller
+└── query-client.ts   # TanStack Query config
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Prefer Queries for Reading">
+    Use queries for read operations. They're cached and can be prefetched.
+  </Accordion>
+
+  <Accordion title="Invalidate After Mutations">
+    Always invalidate relevant queries after mutations:
+    ```typescript
+    onSuccess: () => utils.comic.getAll.invalidate()
+    ```
+  </Accordion>
+
+  <Accordion title="Handle Loading States">
+    Always show loading indicators for better UX.
+  </Accordion>
+
+  <Accordion title="Use Optimistic Updates">
+    For snappy UIs, update UI before server confirms:
+    ```typescript
+    onMutate: async (variables) => {
+      utils.favorites.check.setData(...);
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Group Related Procedures">
+    Keep related procedures in the same router for organization.
+  </Accordion>
+</AccordionGroup>

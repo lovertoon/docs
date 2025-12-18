@@ -1,0 +1,341 @@
+---
+title: "ESLint Configuration"
+description: "Linting rules and code style"
+---
+
+## Overview
+
+Lovertoon uses ESLint with TypeScript and Drizzle plugins for code quality enforcement.
+
+## Configuration
+
+```javascript
+// eslint.config.js
+import { FlatCompat } from "@eslint/eslintrc";
+import tseslint from "typescript-eslint";
+import drizzle from "eslint-plugin-drizzle";
+
+const compat = new FlatCompat({
+  baseDirectory: import.meta.dirname,
+});
+
+export default tseslint.config(
+  {
+    ignores: [".next"],
+  },
+  ...compat.extends("next/core-web-vitals"),
+  {
+    files: ["**/*.ts", "**/*.tsx"],
+    plugins: {
+      drizzle,
+    },
+    extends: [
+      ...tseslint.configs.recommended,
+      ...tseslint.configs.recommendedTypeChecked,
+      ...tseslint.configs.stylisticTypeChecked,
+    ],
+    rules: {
+      "@typescript-eslint/array-type": "off",
+      "@typescript-eslint/consistent-type-definitions": "off",
+      "@typescript-eslint/consistent-type-imports": [
+        "warn",
+        { prefer: "type-imports", fixStyle: "inline-type-imports" },
+      ],
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_" },
+      ],
+      "@typescript-eslint/require-await": "off",
+      "@typescript-eslint/no-misused-promises": [
+        "error",
+        { checksVoidReturn: { attributes: false } },
+      ],
+      "drizzle/enforce-delete-with-where": [
+        "error",
+        { drizzleObjectName: ["db", "ctx.db"] },
+      ],
+      "drizzle/enforce-update-with-where": [
+        "error",
+        { drizzleObjectName: ["db", "ctx.db"] },
+      ],
+    },
+  },
+  {
+    linterOptions: {
+      reportUnusedDisableDirectives: true,
+    },
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+      },
+    },
+  }
+);
+```
+
+## Running ESLint
+
+```bash
+# Check for linting errors
+bun run lint
+
+# Fix auto-fixable issues
+bun run lint:fix
+
+# Combined lint + typecheck
+bun run check
+```
+
+## Key Rules Explained
+
+### TypeScript Rules
+
+#### `consistent-type-imports`
+
+Enforces using `import type` for type-only imports:
+
+```typescript
+// Good
+import type { User } from "./types";
+import { type Session, auth } from "./auth";
+
+// Bad (auto-fixed)
+import { User } from "./types";
+```
+
+#### `no-unused-vars`
+
+Warns on unused variables, but ignores:
+- Variables prefixed with `_`
+- Function parameters prefixed with `_`
+
+```typescript
+// Warning
+const unused = 5;
+
+// OK - intentionally unused parameter
+function handler(_event: Event) {
+  console.log("handled");
+}
+
+// OK - intentionally unused variable
+const _debug = process.env.DEBUG;
+```
+
+#### `no-misused-promises`
+
+Prevents async functions where sync expected, with exception for JSX attributes:
+
+```typescript
+// Error - async in non-async context
+const results = items.map(async (item) => {
+  return await processItem(item);
+});
+
+// OK - properly awaited
+const results = await Promise.all(
+  items.map(async (item) => {
+    return await processItem(item);
+  })
+);
+
+// OK - JSX event handlers (exception)
+<button onClick={async () => await handleClick()}>
+  Click
+</button>
+```
+
+### Drizzle Rules
+
+#### `enforce-delete-with-where`
+
+Prevents accidental deletion of all rows:
+
+```typescript
+// Error - deletes ALL rows
+await db.delete(users);
+
+// OK - has WHERE clause
+await db.delete(users).where(eq(users.id, userId));
+
+// Error in tRPC context
+await ctx.db.delete(users);
+
+// OK in tRPC context
+await ctx.db.delete(users).where(eq(users.id, userId));
+```
+
+#### `enforce-update-with-where`
+
+Prevents accidental update of all rows:
+
+```typescript
+// Error - updates ALL rows
+await db.update(users).set({ active: false });
+
+// OK - has WHERE clause
+await db.update(users).set({ active: false }).where(eq(users.id, userId));
+```
+
+These rules catch dangerous database operations that could affect all records.
+
+### Next.js Rules
+
+From `next/core-web-vitals`:
+
+- **No HTML anchor with href** - Use `next/link`
+- **No img element** - Use `next/image`
+- **Google font display** - Ensures proper font loading
+- **No sync scripts** - Prevents blocking scripts
+
+## Ignored Patterns
+
+### Files
+
+```javascript
+{
+  ignores: [".next"]
+}
+```
+
+The `.next` build directory is ignored as it contains generated code.
+
+### Inline Disabling
+
+```typescript
+// Disable for next line
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const data: any = legacyFunction();
+
+// Disable for entire file (use sparingly)
+/* eslint-disable @typescript-eslint/no-explicit-any */
+```
+
+## VS Code Integration
+
+### Settings
+
+Add to `.vscode/settings.json`:
+
+```json
+{
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+  "eslint.validate": [
+    "javascript",
+    "javascriptreact",
+    "typescript",
+    "typescriptreact"
+  ]
+}
+```
+
+### Extensions
+
+Install the ESLint extension for real-time linting feedback.
+
+## Common Issues
+
+### "Parsing error: Cannot read file"
+
+Ensure `tsconfig.json` includes all files being linted:
+
+```json
+{
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "**/*.js",
+    "**/*.cjs"
+  ]
+}
+```
+
+### "Type information required"
+
+Some rules require type information. Ensure `projectService: true` is set:
+
+```javascript
+languageOptions: {
+  parserOptions: {
+    projectService: true,
+  },
+},
+```
+
+### Slow Linting
+
+For large codebases:
+1. Ensure `.next` is ignored
+2. Consider caching: `ESLINT_CACHE=true bun run lint`
+3. Run lint only on changed files in CI
+
+## Rule Customization
+
+### Disabling a Rule
+
+```javascript
+rules: {
+  "@typescript-eslint/no-explicit-any": "off",
+}
+```
+
+### Changing Severity
+
+```javascript
+rules: {
+  "@typescript-eslint/no-unused-vars": "warn", // warning instead of error
+}
+```
+
+### Per-File Rules
+
+```javascript
+{
+  files: ["*.test.ts", "*.spec.ts"],
+  rules: {
+    "@typescript-eslint/no-explicit-any": "off",
+  },
+}
+```
+
+## Pre-commit Hook
+
+Consider adding a pre-commit hook with husky:
+
+```bash
+# Install husky
+bun add -D husky lint-staged
+
+# Add to package.json
+{
+  "lint-staged": {
+    "*.{ts,tsx}": ["eslint --fix", "prettier --write"]
+  }
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Fix Errors, Don't Disable">
+    Only disable rules when absolutely necessary. Document why with a comment.
+  </Accordion>
+
+  <Accordion title="Run Before Commit">
+    Always run `bun run check` before committing to catch issues early.
+  </Accordion>
+
+  <Accordion title="Use Auto-Fix">
+    Let ESLint auto-fix issues where possible with `bun run lint:fix`.
+  </Accordion>
+
+  <Accordion title="Keep Rules Consistent">
+    Agree on rules as a team and avoid per-file exceptions.
+  </Accordion>
+
+  <Accordion title="Review Disabled Directives">
+    Periodically review `eslint-disable` comments and remove if no longer needed.
+  </Accordion>
+</AccordionGroup>

@@ -1,0 +1,368 @@
+---
+title: "Deployment"
+description: "Production deployment guide"
+---
+
+## Overview
+
+Lovertoon is a Next.js application that can be deployed to various platforms:
+- **Vercel** (Recommended)
+- **Railway**
+- **AWS/GCP/Azure**
+- **Docker** (Self-hosted)
+
+## Production Build
+
+### Build Process
+
+```bash
+# Build for production
+bun run build
+
+# Start production server
+bun run start
+```
+
+### Build Output
+
+Next.js outputs to `.next/`:
+- `.next/server/` - Server-side code
+- `.next/static/` - Static assets (JS, CSS)
+- `.next/cache/` - Build cache
+
+## Vercel Deployment
+
+### Automatic Deployment
+
+<Steps>
+  <Step title="Connect Repository">
+    Import your GitHub repository on Vercel.
+  </Step>
+  <Step title="Configure Build Settings">
+    Vercel auto-detects Next.js. Use defaults:
+    - Build Command: `bun run build`
+    - Output Directory: `.next`
+    - Install Command: `bun install`
+  </Step>
+  <Step title="Add Environment Variables">
+    Add all required environment variables in Vercel dashboard.
+  </Step>
+  <Step title="Deploy">
+    Push to main branch to trigger deployment.
+  </Step>
+</Steps>
+
+### Environment Variables
+
+Add in Vercel Dashboard → Project → Settings → Environment Variables:
+
+```bash
+# Required for production
+AUTH_SECRET="..."
+AUTH_URL="https://your-domain.com"
+AUTH_GOOGLE_ID="..."
+AUTH_GOOGLE_SECRET="..."
+DATABASE_URL="..."
+R2_ACCOUNT_ID="..."
+R2_ACCESS_KEY_ID="..."
+R2_SECRET_ACCESS_KEY="..."
+R2_BUCKET_NAME="..."
+R2_PUBLIC_DOMAIN="..."
+STRIPE_SECRET_KEY="sk_live_..."
+STRIPE_WEBHOOK_SECRET="whsec_..."
+RESEND_API_KEY="..."
+CRON_SECRET="..."
+```
+
+### Vercel.json Configuration
+
+```json
+{
+  "buildCommand": "bun run build",
+  "installCommand": "bun install",
+  "framework": "nextjs"
+}
+```
+
+## Railway Deployment
+
+### Configuration
+
+<Steps>
+  <Step title="Create Project">
+    Create new project on Railway.
+  </Step>
+  <Step title="Add PostgreSQL">
+    Add PostgreSQL database from Railway's templates.
+  </Step>
+  <Step title="Connect Repository">
+    Connect your GitHub repository.
+  </Step>
+  <Step title="Configure Environment">
+    Add environment variables. Use Railway's `${{Postgres.DATABASE_URL}}` for database.
+  </Step>
+</Steps>
+
+### Railway Configuration
+
+```toml
+# railway.toml
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "bun run start"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+```
+
+## Database Setup
+
+### PostgreSQL Requirements
+
+- PostgreSQL 14+
+- Extensions: None required (standard installation)
+- Recommended: Connection pooling (PgBouncer)
+
+### Database Connection
+
+Production database URL format:
+
+```bash
+DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DATABASE?sslmode=require"
+```
+
+### Running Migrations
+
+```bash
+# Run migrations on deployment
+bun run db:migrate
+```
+
+<Note>
+Add `bun run db:migrate` to your build process or run it separately before deployment.
+</Note>
+
+## External Services Setup
+
+### Stripe
+
+<Steps>
+  <Step title="Create Stripe Account">
+    Sign up at stripe.com
+  </Step>
+  <Step title="Get API Keys">
+    Dashboard → Developers → API Keys
+  </Step>
+  <Step title="Configure Webhook">
+    Dashboard → Developers → Webhooks → Add endpoint
+
+    URL: `https://your-domain.com/api/stripe/webhook`
+
+    Events to listen:
+    - `checkout.session.completed`
+    - `payment_intent.payment_failed`
+  </Step>
+  <Step title="Get Webhook Secret">
+    Copy the signing secret (whsec_...)
+  </Step>
+</Steps>
+
+### Cloudflare R2
+
+<Steps>
+  <Step title="Create Bucket">
+    Cloudflare Dashboard → R2 → Create Bucket
+  </Step>
+  <Step title="Configure Public Access">
+    Enable public access or add custom domain
+  </Step>
+  <Step title="Generate API Token">
+    R2 → API Tokens → Create Token
+    Permissions: Object Read/Write
+  </Step>
+  <Step title="Configure CORS">
+    Add CORS rules for your domain
+  </Step>
+</Steps>
+
+### Google OAuth
+
+<Steps>
+  <Step title="Create Project">
+    Google Cloud Console → Create Project
+  </Step>
+  <Step title="Configure OAuth Consent">
+    APIs & Services → OAuth consent screen
+  </Step>
+  <Step title="Create Credentials">
+    APIs & Services → Credentials → Create OAuth Client ID
+
+    Type: Web application
+    Authorized redirect URIs: `https://your-domain.com/api/auth/callback/google`
+  </Step>
+</Steps>
+
+### Resend Email
+
+<Steps>
+  <Step title="Create Account">
+    Sign up at resend.com
+  </Step>
+  <Step title="Verify Domain">
+    Add DNS records for your domain
+  </Step>
+  <Step title="Get API Key">
+    API Keys → Create API Key
+  </Step>
+</Steps>
+
+## Environment Configuration
+
+### Production Checklist
+
+```bash
+# Required - must be set
+AUTH_SECRET          # Generate: openssl rand -base64 32
+AUTH_URL             # Your production URL
+AUTH_GOOGLE_ID       # From Google Cloud Console
+AUTH_GOOGLE_SECRET   # From Google Cloud Console
+DATABASE_URL         # Production database
+R2_*                 # Cloudflare R2 credentials
+STRIPE_SECRET_KEY    # Live key (sk_live_...)
+STRIPE_WEBHOOK_SECRET # Production webhook secret
+RESEND_API_KEY       # Production API key
+CRON_SECRET          # Generate: openssl rand -base64 32
+```
+
+### Generate Secrets
+
+```bash
+# Generate AUTH_SECRET
+openssl rand -base64 32
+
+# Generate CRON_SECRET
+openssl rand -base64 32
+```
+
+## Performance Optimization
+
+### Next.js Configuration
+
+```javascript
+// next.config.js
+const config = {
+  images: {
+    domains: ["cdn.lovertoon.com", "utfs.io"],
+    formats: ["image/avif", "image/webp"],
+  },
+  compress: true,
+  poweredByHeader: false,
+};
+```
+
+### Caching Headers
+
+Configure CDN caching for static assets:
+
+```javascript
+// next.config.js
+const config = {
+  async headers() {
+    return [
+      {
+        source: "/:all*(svg|jpg|png|webp|avif)",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
+    ];
+  },
+};
+```
+
+## Monitoring
+
+### Error Tracking
+
+Consider adding:
+- Sentry for error tracking
+- Vercel Analytics for performance
+
+### Health Check
+
+```typescript
+// src/app/api/health/route.ts
+export async function GET() {
+  return Response.json({ status: "ok", timestamp: new Date().toISOString() });
+}
+```
+
+## Security Checklist
+
+<AccordionGroup>
+  <Accordion title="Environment Variables">
+    - Never commit secrets to git
+    - Use different keys for production
+    - Rotate keys periodically
+  </Accordion>
+
+  <Accordion title="Database">
+    - Use SSL connections
+    - Restrict IP access if possible
+    - Regular backups
+  </Accordion>
+
+  <Accordion title="Authentication">
+    - Verify OAuth redirect URIs
+    - Use secure session settings
+    - Enable 2FA on service accounts
+  </Accordion>
+
+  <Accordion title="File Uploads">
+    - Validate file types server-side
+    - Use presigned URLs
+    - Set appropriate CORS
+  </Accordion>
+
+  <Accordion title="Payments">
+    - Verify webhook signatures
+    - Use live keys only in production
+    - Test with Stripe test mode first
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+### Build Failures
+
+```bash
+# Check for type errors
+bun run typecheck
+
+# Check for lint errors
+bun run lint
+
+# Verify environment
+SKIP_ENV_VALIDATION=true bun run build
+```
+
+### Database Connection Issues
+
+```bash
+# Test connection
+bun run db:studio
+
+# Check SSL requirement
+DATABASE_URL="...?sslmode=require"
+```
+
+### Webhook Not Working
+
+1. Verify webhook URL is publicly accessible
+2. Check webhook secret matches
+3. Review Stripe webhook logs
+4. Check server logs for errors

@@ -1,0 +1,382 @@
+---
+title: "Architecture Overview"
+description: "High-level application architecture and design patterns"
+---
+
+## System Architecture
+
+Lovertoon follows a modern full-stack architecture optimized for type safety, performance, and developer experience.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         Client Layer                            │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
+│  │   Server    │  │   Client    │  │      React Components   │  │
+│  │ Components  │  │ Components  │  │   (shadcn/ui + Radix)   │  │
+│  └──────┬──────┘  └──────┬──────┘  └────────────┬────────────┘  │
+└─────────┼────────────────┼──────────────────────┼───────────────┘
+          │                │                      │
+          │ Direct DB      │ tRPC Hooks           │ React Hook Form
+          │ Access         │ (useQuery/           │ + Zod Validation
+          │                │  useMutation)        │
+          ▼                ▼                      │
+┌─────────────────────────────────────────────────┼───────────────┐
+│                     API Layer (tRPC)            │               │
+│  ┌─────────────────────────────────────────────┴─────────────┐  │
+│  │                     tRPC Router                           │  │
+│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────┐  │  │
+│  │  │  Public  │ │Protected │ │  Admin   │ │   Creator    │  │  │
+│  │  │Procedure │ │Procedure │ │Procedure │ │  Procedure   │  │  │
+│  │  └────┬─────┘ └────┬─────┘ └────┬─────┘ └──────┬───────┘  │  │
+│  │       │            │            │              │          │  │
+│  │       └────────────┴────────────┴──────────────┘          │  │
+│  │                           │                               │  │
+│  │                    Zod Validation                         │  │
+│  └───────────────────────────┼───────────────────────────────┘  │
+└──────────────────────────────┼──────────────────────────────────┘
+                               │
+┌──────────────────────────────┼──────────────────────────────────┐
+│                       Data Layer                                │
+│  ┌───────────────────────────┼───────────────────────────────┐  │
+│  │                  Drizzle ORM Context                      │  │
+│  │       ┌───────────────────┴────────────────────┐          │  │
+│  │       │              PostgreSQL                │          │  │
+│  │       │         (lovertoon_* tables)           │          │  │
+│  │       └────────────────────────────────────────┘          │  │
+│  └───────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                    External Services                            │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌───────────┐  │
+│  │   Stripe   │  │ Cloudflare │  │   Resend   │  │  Google   │  │
+│  │  Payments  │  │  R2 Storage │ │   Email    │  │   OAuth   │  │
+│  └────────────┘  └────────────┘  └────────────┘  └───────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Request Flow
+
+### Server Component Request
+
+```
+1. Browser requests page
+2. Next.js renders Server Component
+3. Component directly calls tRPC (server-side)
+4. tRPC procedure executes with db context
+5. Drizzle queries PostgreSQL
+6. Data returns through chain
+7. HTML rendered and sent to browser
+```
+
+### Client Component Request
+
+```
+1. Client Component renders
+2. useQuery/useMutation hook called
+3. tRPC client sends HTTP request
+4. Next.js API route receives request
+5. tRPC procedure validates input (Zod)
+6. Procedure executes with session context
+7. Response serialized with SuperJSON
+8. Data returned to React Query cache
+```
+
+## Layer Responsibilities
+
+### Presentation Layer
+
+**Server Components** (default)
+- Initial page render
+- SEO-critical content
+- Direct database access via tRPC server client
+- No client-side JavaScript bundle
+
+**Client Components** (`"use client"`)
+- Interactive elements (forms, buttons)
+- Real-time updates
+- tRPC hooks (useQuery, useMutation)
+- React state and effects
+
+### API Layer (tRPC)
+
+- Type-safe procedures
+- Input validation with Zod
+- Role-based access control
+- Database operations via Drizzle context
+
+```typescript
+// Every procedure receives context
+type Context = {
+  db: DrizzleClient;        // Database access
+  session: Session | null;  // User session
+};
+```
+
+### Data Layer
+
+- Drizzle ORM for type-safe queries
+- PostgreSQL database
+- Schema with relations
+- Migrations for schema changes
+
+## Design Patterns
+
+### Server-First
+
+Server Components are the default. Only use Client Components when necessary:
+
+```typescript
+// Server Component (default) - no directive needed
+export default async function ComicPage({ params }) {
+  // Direct server-side data fetch
+  const comic = await api.comic.getBySlug.query({ slug: params.slug });
+  return <ComicDetail comic={comic} />;
+}
+
+// Client Component - explicit directive
+"use client";
+export function PurchaseButton({ chapterId }) {
+  const purchase = api.purchase.create.useMutation();
+  return <button onClick={() => purchase.mutate({ chapterId })}>Buy</button>;
+}
+```
+
+### Co-location
+
+Related code is grouped together:
+- Route-specific components in route folders
+- Feature-specific logic in router files
+- Validation schemas mirror router structure
+
+### Type Inference
+
+Types flow from schema through API to UI:
+
+```typescript
+// 1. Schema defines source of truth
+export const comics = createTable("comic", (d) => ({
+  id: d.integer().primaryKey(),
+  name: d.varchar({ length: 256 }).notNull(),
+}));
+
+// 2. Type inferred from schema
+export type Comic = typeof comics.$inferSelect;
+
+// 3. tRPC procedure returns typed data
+.query(async ({ ctx }) => {
+  return ctx.db.query.lovertoonComics.findMany();
+  // Returns Comic[]
+});
+
+// 4. Client receives typed response
+const { data } = api.comic.getAll.useQuery();
+// data is Comic[] | undefined
+```
+
+### Route Groups
+
+Organize routes by layout without affecting URLs:
+
+```
+app/
+├── (home)/       # Public layout → /comics, /topup
+├── (auth)/       # Auth layout → /signin, /signup
+├── admin/        # Admin layout → /admin/*
+└── creator/      # Creator layout → /creator/*
+```
+
+## Data Flow Patterns
+
+### Read Operations (Query)
+
+```typescript
+// Server Component
+export default async function ComicsPage() {
+  const comics = await api.comic.getAll.query();
+  return <ComicGrid comics={comics} />;
+}
+
+// Client Component
+"use client";
+export function ComicSearch() {
+  const [search, setSearch] = useState("");
+  const { data, isLoading } = api.comic.search.useQuery(
+    { query: search },
+    { enabled: search.length > 2 }
+  );
+  return <SearchResults comics={data} loading={isLoading} />;
+}
+```
+
+### Write Operations (Mutation)
+
+```typescript
+"use client";
+export function CreateComicForm() {
+  const utils = api.useUtils();
+  const create = api.comic.create.useMutation({
+    onSuccess: () => {
+      // Invalidate cache to refetch list
+      utils.comic.getAll.invalidate();
+    },
+  });
+
+  const onSubmit = (data: ComicFormValues) => {
+    create.mutate(data);
+  };
+
+  return <form onSubmit={handleSubmit(onSubmit)}>...</form>;
+}
+```
+
+### Optimistic Updates
+
+```typescript
+const toggleFavorite = api.favorites.toggle.useMutation({
+  onMutate: async (variables) => {
+    // Cancel outgoing queries
+    await utils.favorites.check.cancel({ comicId: variables.comicId });
+
+    // Snapshot current state
+    const previous = utils.favorites.check.getData({ comicId: variables.comicId });
+
+    // Optimistically update
+    utils.favorites.check.setData(
+      { comicId: variables.comicId },
+      (old) => !old
+    );
+
+    return { previous };
+  },
+  onError: (err, variables, context) => {
+    // Rollback on error
+    utils.favorites.check.setData(
+      { comicId: variables.comicId },
+      context?.previous
+    );
+  },
+});
+```
+
+## Error Handling
+
+### tRPC Errors
+
+```typescript
+import { TRPCError } from "@trpc/server";
+
+// In procedure
+if (!comic) {
+  throw new TRPCError({
+    code: "NOT_FOUND",
+    message: "ไม่พบการ์ตูนที่ต้องการ",
+  });
+}
+
+// In client
+const { error } = api.comic.getById.useQuery({ id: 999 });
+if (error?.data?.code === "NOT_FOUND") {
+  // Handle not found
+}
+```
+
+### Error Codes
+
+| Code | HTTP Status | Usage |
+|------|-------------|-------|
+| `BAD_REQUEST` | 400 | Invalid input |
+| `UNAUTHORIZED` | 401 | Not logged in |
+| `FORBIDDEN` | 403 | Insufficient permissions |
+| `NOT_FOUND` | 404 | Resource not found |
+| `INTERNAL_SERVER_ERROR` | 500 | Unexpected error |
+
+## Security Patterns
+
+### Input Validation
+
+All inputs validated with Zod before processing:
+
+```typescript
+.input(z.object({
+  name: z.string().min(1).max(256),
+  price: z.number().positive(),
+}))
+```
+
+### Authorization
+
+Role-based procedure types:
+
+```typescript
+// Anyone can access
+publicProcedure
+
+// Must be logged in
+protectedProcedure
+
+// Must be admin
+adminProcedure
+
+// Must be super admin
+superAdminProcedure
+
+// Must be creator
+creatorProcedure
+
+// Must be creator (not assistant)
+creatorOnlyProcedure
+```
+
+### Resource Authorization
+
+Check ownership within procedures:
+
+```typescript
+.mutation(async ({ ctx, input }) => {
+  const comic = await ctx.db.query.lovertoonComics.findFirst({
+    where: eq(comics.id, input.id),
+  });
+
+  if (comic.createdById !== ctx.session.user.id) {
+    throw new TRPCError({ code: "FORBIDDEN" });
+  }
+
+  // Proceed with update
+});
+```
+
+## Performance Patterns
+
+### Server Components
+
+Reduce client-side JavaScript by using Server Components for static content.
+
+### React Query Caching
+
+tRPC hooks leverage React Query for intelligent caching:
+
+```typescript
+// Configure stale time
+useQuery({ id: 1 }, {
+  staleTime: 5 * 60 * 1000, // 5 minutes
+  cacheTime: 30 * 60 * 1000, // 30 minutes
+});
+```
+
+### Database Indexing
+
+Schema includes indexes for common queries:
+
+```typescript
+(t) => [
+  index("comic_slug_idx").on(t.slug),
+  index("comic_status_idx").on(t.status),
+]
+```
+
+### Image Optimization
+
+- Next.js Image component for automatic optimization
+- Cloudflare R2 CDN for global delivery
+- Multiple image sizes for responsive loading

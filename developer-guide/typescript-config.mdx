@@ -1,0 +1,322 @@
+---
+title: "TypeScript Configuration"
+description: "Type checking and compiler options"
+---
+
+## Overview
+
+Lovertoon uses strict TypeScript configuration for maximum type safety.
+
+## Configuration File
+
+```json
+// tsconfig.json
+{
+  "compilerOptions": {
+    /* Base Options */
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "target": "es2022",
+    "allowJs": true,
+    "resolveJsonModule": true,
+    "moduleDetection": "force",
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+
+    /* Strictness */
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "checkJs": true,
+
+    /* Bundled projects */
+    "lib": ["dom", "dom.iterable", "ES2022"],
+    "noEmit": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "preserve",
+    "plugins": [{ "name": "next" }],
+    "incremental": true,
+
+    /* Path Aliases */
+    "baseUrl": ".",
+    "paths": {
+      "~/*": ["./src/*"]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    "**/*.cjs",
+    "**/*.js",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": ["node_modules"]
+}
+```
+
+## Key Options Explained
+
+### Strictness Options
+
+#### `strict: true`
+
+Enables all strict type-checking options:
+- `strictNullChecks` - `null` and `undefined` are distinct types
+- `strictFunctionTypes` - Strict function parameter checking
+- `strictBindCallApply` - Strict `bind`, `call`, `apply` checking
+- `strictPropertyInitialization` - Class properties must be initialized
+- `noImplicitAny` - Error on implied `any` types
+- `noImplicitThis` - Error on implied `this` type
+- `alwaysStrict` - Parse in strict mode, emit "use strict"
+
+#### `noUncheckedIndexedAccess: true`
+
+Array and object index access returns `T | undefined`:
+
+```typescript
+const arr = [1, 2, 3];
+
+// Without noUncheckedIndexedAccess:
+const item = arr[5]; // type: number (WRONG - could be undefined)
+
+// With noUncheckedIndexedAccess:
+const item = arr[5]; // type: number | undefined (CORRECT)
+
+// Must check before use
+if (item !== undefined) {
+  console.log(item + 1); // Safe
+}
+```
+
+This catches common runtime errors at compile time.
+
+### Module Options
+
+#### `moduleResolution: "Bundler"`
+
+Modern resolution for bundlers like Next.js:
+- Supports `exports` field in package.json
+- Handles ESM and CJS interop correctly
+- Works with path aliases
+
+#### `verbatimModuleSyntax: true`
+
+Type-only imports must use `import type`:
+
+```typescript
+// Required with verbatimModuleSyntax
+import type { User } from "./types";
+import { type Config, getData } from "./utils";
+
+// Error - type imported as value
+import { User } from "./types";
+```
+
+### Path Aliases
+
+```json
+"paths": {
+  "~/*": ["./src/*"]
+}
+```
+
+Use `~/` instead of relative paths:
+
+```typescript
+// Instead of:
+import { api } from "../../../trpc/react";
+import { Button } from "../../components/ui/button";
+
+// Use:
+import { api } from "~/trpc/react";
+import { Button } from "~/components/ui/button";
+```
+
+### Next.js Integration
+
+```json
+"plugins": [{ "name": "next" }]
+```
+
+Enables Next.js-specific type checking:
+- Server/client boundary validation
+- Metadata types
+- Route types
+
+## Type Checking
+
+### Running Type Check
+
+```bash
+# Check types only
+bun run typecheck
+
+# Check types and lint
+bun run check
+```
+
+### IDE Integration
+
+TypeScript errors appear in real-time in VS Code. Install the official TypeScript extension for best experience.
+
+## Common Patterns
+
+### Type Inference
+
+Let TypeScript infer types when possible:
+
+```typescript
+// Good - type inferred
+const user = await db.query.users.findFirst({
+  where: eq(users.id, userId),
+});
+
+// Unnecessary - type is obvious
+const user: User | undefined = await db.query.users.findFirst({
+  where: eq(users.id, userId),
+});
+```
+
+### Type Assertions
+
+Avoid type assertions (`as`) when possible:
+
+```typescript
+// Bad - bypasses type checking
+const data = response as UserData;
+
+// Good - runtime validation
+const data = userSchema.parse(response);
+
+// Good - type guard
+function isUserData(obj: unknown): obj is UserData {
+  return typeof obj === "object" && obj !== null && "id" in obj;
+}
+```
+
+### Generics
+
+Use generics for reusable type-safe functions:
+
+```typescript
+// Generic function
+function first<T>(arr: T[]): T | undefined {
+  return arr[0];
+}
+
+// Generic component
+function List<T>({ items, render }: {
+  items: T[];
+  render: (item: T) => React.ReactNode;
+}) {
+  return <ul>{items.map(render)}</ul>;
+}
+```
+
+### Discriminated Unions
+
+Use for state management and API responses:
+
+```typescript
+type Result<T> =
+  | { success: true; data: T }
+  | { success: false; error: string };
+
+function handleResult(result: Result<User>) {
+  if (result.success) {
+    // TypeScript knows result.data exists
+    console.log(result.data.name);
+  } else {
+    // TypeScript knows result.error exists
+    console.log(result.error);
+  }
+}
+```
+
+## Type Definitions
+
+### Module Augmentation
+
+Extend existing types (like NextAuth session):
+
+```typescript
+// src/types/next-auth.d.ts
+import { type DefaultSession } from "next-auth";
+
+declare module "next-auth" {
+  interface Session extends DefaultSession {
+    user: {
+      id: string;
+      coin: number;
+      role: "user" | "creator" | "admin" | "super_admin";
+    } & DefaultSession["user"];
+  }
+
+  interface User {
+    coin: number;
+    role: string;
+  }
+}
+```
+
+### Global Types
+
+```typescript
+// src/types/global.d.ts
+declare global {
+  interface Window {
+    gtag: (...args: unknown[]) => void;
+  }
+}
+
+export {};
+```
+
+## Troubleshooting
+
+### "Cannot find module"
+
+Check path aliases in both `tsconfig.json` and `next.config.js`.
+
+### "Property does not exist"
+
+1. Check if the property is optional
+2. Verify type definitions are imported
+3. Check for typos
+
+### "Type 'X' is not assignable to 'Y'"
+
+1. Review the expected type
+2. Check for `null`/`undefined` issues
+3. Use type narrowing or guards
+
+### Slow Type Checking
+
+1. Use `incremental: true` (already set)
+2. Exclude `node_modules`
+3. Check for circular dependencies
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Avoid any">
+    Never use `any` unless absolutely necessary. Use `unknown` for truly unknown types.
+  </Accordion>
+
+  <Accordion title="Use Type Guards">
+    Create type guard functions for runtime type checking.
+  </Accordion>
+
+  <Accordion title="Prefer Inference">
+    Let TypeScript infer types when the inference is clear and correct.
+  </Accordion>
+
+  <Accordion title="Document Complex Types">
+    Add JSDoc comments for complex types and functions.
+  </Accordion>
+
+  <Accordion title="Keep Types Close">
+    Define types near where they're used, or in a shared location if reused.
+  </Accordion>
+</AccordionGroup>

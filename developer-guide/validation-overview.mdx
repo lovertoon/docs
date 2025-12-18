@@ -1,0 +1,212 @@
+---
+title: "Validation Overview"
+description: "Input validation and type safety"
+---
+
+## Overview
+
+Lovertoon uses multiple layers of validation to ensure data integrity:
+- **Zod**: Runtime validation for API inputs
+- **TypeScript**: Compile-time type checking
+- **Database**: Constraints and foreign keys
+- **Environment**: Validated env vars with @t3-oss/env-nextjs
+
+## Validation Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     Client Input                        │
+└─────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────┐
+│              React Hook Form + Zod                      │
+│           (Client-side validation with Thai errors)    │
+└─────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────┐
+│                  tRPC Input Schema                      │
+│            (Server-side Zod validation)                 │
+└─────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────┐
+│               Business Logic Validation                 │
+│          (Ownership, permissions, limits)               │
+└─────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────┐
+│               Database Constraints                      │
+│       (Foreign keys, unique, not null, check)           │
+└─────────────────────────────────────────────────────────┘
+```
+
+## Key Principles
+
+### 1. Validate at Boundaries
+
+```typescript
+// Always validate external input
+export const comicRouter = createTRPCRouter({
+  create: creatorProcedure
+    .input(comicFormSchema) // Zod validation
+    .mutation(async ({ ctx, input }) => {
+      // Input is guaranteed to be valid here
+      return ctx.db.insert(comics).values(input);
+    }),
+});
+```
+
+### 2. Thai Error Messages
+
+All user-facing validation uses Thai:
+
+```typescript
+const schema = z.object({
+  name: z.string().min(1, "กรุณากรอกชื่อ"),
+  email: z.string().email("รูปแบบอีเมลไม่ถูกต้อง"),
+  age: z.number().min(18, "ต้องมีอายุ 18 ปีขึ้นไป"),
+});
+```
+
+### 3. Type Inference
+
+Derive TypeScript types from Zod schemas:
+
+```typescript
+// Define schema once
+export const comicFormSchema = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+});
+
+// Infer type from schema
+export type ComicFormData = z.infer<typeof comicFormSchema>;
+// Result: { name: string; description?: string | undefined }
+```
+
+### 4. Schema Reuse
+
+Share schemas between client and server:
+
+```typescript
+// src/lib/schemas/comic.ts
+export const comicFormSchema = z.object({...});
+
+// Client: React Hook Form
+const form = useForm<ComicFormData>({
+  resolver: zodResolver(comicFormSchema),
+});
+
+// Server: tRPC procedure
+.input(comicFormSchema)
+```
+
+## Validation Types
+
+### Input Validation
+
+For API and form inputs:
+
+```typescript
+.input(z.object({
+  id: z.number().int().positive(),
+  name: z.string().min(1).max(255),
+  tags: z.array(z.string()).max(10),
+}))
+```
+
+### Output Validation
+
+Optional but useful for API contracts:
+
+```typescript
+.output(z.object({
+  id: z.number(),
+  name: z.string(),
+  createdAt: z.date(),
+}))
+```
+
+### Transform Validation
+
+Clean and transform data:
+
+```typescript
+const schema = z.object({
+  email: z.string().email().toLowerCase().trim(),
+  tags: z.string().transform((s) => s.split(",").map((t) => t.trim())),
+});
+```
+
+## Error Handling
+
+### tRPC Errors
+
+Validation errors become TRPC errors:
+
+```typescript
+// Automatic - Zod errors throw BAD_REQUEST
+.input(z.object({ email: z.string().email() }))
+
+// Manual validation error
+if (!isValid) {
+  throw new TRPCError({
+    code: "BAD_REQUEST",
+    message: "ข้อมูลไม่ถูกต้อง",
+  });
+}
+```
+
+### Form Errors
+
+Display validation errors in forms:
+
+```typescript
+"use client";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+
+export function ComicForm() {
+  const form = useForm({
+    resolver: zodResolver(comicFormSchema),
+  });
+
+  return (
+    <form>
+      <input {...form.register("name")} />
+      {form.formState.errors.name && (
+        <span className="text-red-500">
+          {form.formState.errors.name.message}
+        </span>
+      )}
+    </form>
+  );
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Define Schemas in Separate Files">
+    Keep schemas in `src/lib/schemas/` for reusability across client and server.
+  </Accordion>
+
+  <Accordion title="Use Strict Mode">
+    Zod is strict by default - unknown keys are stripped. Use `.passthrough()` only when needed.
+  </Accordion>
+
+  <Accordion title="Prefer Specific Types">
+    Use `z.number().int().positive()` over just `z.number()` for clearer validation.
+  </Accordion>
+
+  <Accordion title="Validate File Uploads">
+    Validate file type, size, and count on both client and server.
+  </Accordion>
+
+  <Accordion title="Test Edge Cases">
+    Test with empty strings, null, undefined, and boundary values.
+  </Accordion>
+</AccordionGroup>

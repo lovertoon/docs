@@ -1,0 +1,401 @@
+---
+title: "Zod Schemas"
+description: "Schema definitions and validation patterns"
+---
+
+## Schema Organization
+
+Zod schemas are organized by domain in `src/lib/schemas/`:
+
+```
+src/lib/schemas/
+├── comic.ts          # Comic form & update schemas
+├── chapter.ts        # Chapter CRUD schemas
+├── category.ts       # Category schemas
+├── comment.ts        # Comment schemas
+├── user.ts           # User profile schemas
+├── creator.ts        # Creator application schemas
+├── creatorAssistant.ts
+├── creatorPass.ts
+├── creatorProfile.ts
+├── purchase.ts       # Purchase flow schemas
+├── topup.ts          # Coin topup schemas
+├── payout.ts         # Payout request schemas
+├── promotion.ts      # Promotion schemas
+├── promotionBidding.ts
+├── freeReadingCode.ts
+└── pass.ts           # Creator pass schemas
+```
+
+## Schema Patterns
+
+### Basic Form Schema
+
+```typescript
+// src/lib/schemas/user.ts
+import { z } from "zod";
+
+export const userProfileUpdateSchema = z.object({
+  name: z
+    .string()
+    .min(1, "ชื่อต้องมีอย่างน้อย 1 ตัวอักษร")
+    .max(255, "ชื่อต้องไม่เกิน 255 ตัวอักษร"),
+  image: z.string().url("URL รูปภาพไม่ถูกต้อง").optional().nullable(),
+});
+
+export type UserProfileUpdateData = z.infer<typeof userProfileUpdateSchema>;
+```
+
+### Create/Update Pattern
+
+```typescript
+// src/lib/schemas/comic.ts
+import { z } from "zod";
+
+// Base schema for creation
+export const comicFormSchema = z.object({
+  name: z.string().min(1, "กรุณากรอกชื่อการ์ตูน"),
+  slug: z.string().optional(),
+  englishName: z.string().optional(),
+  description: z.string().optional(),
+  coverImage: z.string().optional(),
+  comicBanner: z.string().nullable().optional(),
+  uploadDays: z.array(z.string()).optional(),
+  isAdult: z.boolean().optional().default(false),
+  status: z.string().optional(),
+  targetAudience: z.enum(["male", "female", "bl_gl"]).optional(),
+  displayMode: z.enum(["single", "paginated"]).default("single"),
+  contentType: z.enum(["comic", "novel"]).default("comic"),
+  categoryIds: z.array(z.number()).optional(),
+});
+
+export type ComicFormData = z.infer<typeof comicFormSchema>;
+
+// Extended schema for updates (adds ID)
+export const comicUpdateSchema = comicFormSchema.merge(
+  z.object({
+    id: z.number().int().positive("Invalid comic ID"),
+  })
+);
+
+export type ComicUpdateData = z.infer<typeof comicUpdateSchema>;
+```
+
+### Conditional Validation
+
+```typescript
+// Validate required fields only when status is not draft
+export const comicFormSchema = z
+  .object({
+    name: z.string().min(1, "กรุณากรอกชื่อการ์ตูน"),
+    englishName: z.string().optional(),
+    description: z.string().optional(),
+    coverImage: z.string().optional(),
+    targetAudience: z.enum(["male", "female", "bl_gl"]).optional(),
+    categoryIds: z.array(z.number()).optional(),
+    status: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    // Only validate if publishing (not draft)
+    if (data.status && data.status !== "draft") {
+      if (!data.englishName || data.englishName.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "กรุณากรอกชื่อการ์ตูนภาษาอังกฤษ",
+          path: ["englishName"],
+        });
+      }
+
+      if (!data.description || data.description.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "กรุณากรอกเรื่องย่อการ์ตูน",
+          path: ["description"],
+        });
+      }
+
+      if (!data.coverImage || data.coverImage.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "กรุณาอัปโหลดรูปหน้าปกการ์ตูน",
+          path: ["coverImage"],
+        });
+      }
+
+      if (!data.categoryIds || data.categoryIds.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "กรุณาเลือกหมวดหมู่อย่างน้อย 1 หมวดหมู่",
+          path: ["categoryIds"],
+        });
+      } else if (data.categoryIds.length > 5) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "เลือกได้สูงสุด 5 หมวดหมู่",
+          path: ["categoryIds"],
+        });
+      }
+    }
+  });
+```
+
+### Chapter Schema
+
+```typescript
+// src/lib/schemas/chapter.ts
+import { z } from "zod";
+
+// Chapter form schema
+export const chapterFormSchema = z.object({
+  name: z.string().optional(),
+  description: z.string().optional(),
+  coverImage: z.string().nullable().optional(),
+  contentImages: z
+    .array(
+      z.object({
+        url: z.string(),
+        name: z.string(),
+      })
+    )
+    .default([]),
+  amount: z.number().optional(),
+  orderName: z.string().optional(),
+  status: z.enum(["active", "draft"]).default("draft"),
+});
+
+// Chapter create schema (for modal)
+export const chapterCreateModalSchema = z.object({
+  comicId: z.number(),
+  orderName: z.string().min(1, "เลขตอนต้องระบุ"),
+  name: z.string().optional(),
+  description: z.string().optional(),
+  coverImage: z.string().nullable().optional(),
+  contentImages: z
+    .array(
+      z.object({
+        url: z.string(),
+        name: z.string(),
+      })
+    )
+    .min(1, "ต้องมีรูปภาพเนื้อหาอย่างน้อย 1 รูป"),
+  amount: z.number().nullable().optional(),
+  status: z.enum(["active", "draft"]).default("active"),
+});
+
+// Chapter update schema (adds ID)
+export const chapterUpdateSchema = chapterFormSchema.extend({
+  id: z.number().int().positive("Invalid chapter ID"),
+});
+
+// Chapter order update schema
+export const chapterOrderUpdateSchema = z.object({
+  chapters: z.array(
+    z.object({
+      id: z.number(),
+      order: z.number(),
+    })
+  ),
+});
+```
+
+## Common Validation Patterns
+
+### Strings
+
+```typescript
+z.string()                          // Any string
+z.string().min(1, "Required")       // Non-empty
+z.string().max(255)                 // Max length
+z.string().email("Invalid email")   // Email format
+z.string().url("Invalid URL")       // URL format
+z.string().trim()                   // Trim whitespace
+z.string().toLowerCase()            // Lowercase
+z.string().regex(/^[a-z]+$/)        // Pattern match
+```
+
+### Numbers
+
+```typescript
+z.number()                          // Any number
+z.number().int()                    // Integer only
+z.number().positive()               // > 0
+z.number().nonnegative()            // >= 0
+z.number().min(0)                   // >= 0
+z.number().max(100)                 // <= 100
+z.number().multipleOf(0.01)         // Currency (2 decimals)
+```
+
+### Arrays
+
+```typescript
+z.array(z.string())                 // Array of strings
+z.array(z.number()).min(1)          // Non-empty array
+z.array(z.number()).max(10)         // Max 10 items
+z.array(z.number()).length(5)       // Exactly 5 items
+z.array(z.object({...}))            // Array of objects
+```
+
+### Enums
+
+```typescript
+z.enum(["active", "draft"])         // String enum
+z.enum(["male", "female", "bl_gl"]) // Target audience
+z.nativeEnum(StatusEnum)            // From TypeScript enum
+```
+
+### Optional & Nullable
+
+```typescript
+z.string().optional()               // string | undefined
+z.string().nullable()               // string | null
+z.string().nullish()                // string | null | undefined
+z.string().optional().nullable()    // string | null | undefined
+```
+
+### Objects
+
+```typescript
+z.object({
+  name: z.string(),
+  age: z.number(),
+})
+
+// Partial (all optional)
+schema.partial()
+
+// Required (all required)
+schema.required()
+
+// Pick specific fields
+schema.pick({ name: true })
+
+// Omit specific fields
+schema.omit({ age: true })
+
+// Extend with more fields
+schema.extend({ email: z.string() })
+
+// Merge schemas
+schema1.merge(schema2)
+```
+
+## Thai Validation Messages
+
+Common Thai error messages:
+
+```typescript
+const thaiMessages = {
+  // Required fields
+  required: "กรุณากรอกข้อมูล",
+  requiredName: "กรุณากรอกชื่อ",
+  requiredEmail: "กรุณากรอกอีเมล",
+
+  // Format errors
+  invalidEmail: "รูปแบบอีเมลไม่ถูกต้อง",
+  invalidUrl: "URL ไม่ถูกต้อง",
+  invalidPhone: "เบอร์โทรศัพท์ไม่ถูกต้อง",
+
+  // Length errors
+  tooShort: "ข้อมูลสั้นเกินไป",
+  tooLong: "ข้อมูลยาวเกินไป",
+  minLength: (n: number) => `ต้องมีอย่างน้อย ${n} ตัวอักษร`,
+  maxLength: (n: number) => `ต้องไม่เกิน ${n} ตัวอักษร`,
+
+  // Number errors
+  mustBeNumber: "ต้องเป็นตัวเลข",
+  mustBePositive: "ต้องเป็นจำนวนบวก",
+  minValue: (n: number) => `ต้องมากกว่าหรือเท่ากับ ${n}`,
+  maxValue: (n: number) => `ต้องน้อยกว่าหรือเท่ากับ ${n}`,
+
+  // Array errors
+  minItems: (n: number) => `ต้องเลือกอย่างน้อย ${n} รายการ`,
+  maxItems: (n: number) => `เลือกได้สูงสุด ${n} รายการ`,
+
+  // File errors
+  fileRequired: "กรุณาอัปโหลดไฟล์",
+  fileTooLarge: "ไฟล์มีขนาดใหญ่เกินไป",
+  invalidFileType: "ประเภทไฟล์ไม่ถูกต้อง",
+};
+```
+
+## Usage in tRPC
+
+```typescript
+import { comicFormSchema } from "~/lib/schemas/comic";
+
+export const comicRouter = createTRPCRouter({
+  create: creatorProcedure
+    .input(comicFormSchema)
+    .mutation(async ({ ctx, input }) => {
+      // input is fully typed and validated
+      return ctx.db.insert(comics).values({
+        ...input,
+        creatorId: ctx.session.user.id,
+      });
+    }),
+
+  update: creatorProcedure
+    .input(comicUpdateSchema)
+    .mutation(async ({ ctx, input }) => {
+      const { id, ...data } = input;
+      return ctx.db.update(comics).set(data).where(eq(comics.id, id));
+    }),
+});
+```
+
+## Usage in Forms
+
+```typescript
+"use client";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { comicFormSchema, type ComicFormData } from "~/lib/schemas/comic";
+
+export function ComicForm() {
+  const form = useForm<ComicFormData>({
+    resolver: zodResolver(comicFormSchema),
+    defaultValues: {
+      name: "",
+      isAdult: false,
+      status: "draft",
+    },
+  });
+
+  const onSubmit = (data: ComicFormData) => {
+    // data is validated
+    createComic.mutate(data);
+  };
+
+  return (
+    <form onSubmit={form.handleSubmit(onSubmit)}>
+      <Input {...form.register("name")} />
+      <ErrorMessage errors={form.formState.errors} name="name" />
+      {/* ... */}
+    </form>
+  );
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Single Source of Truth">
+    Define schemas once and share between client and server.
+  </Accordion>
+
+  <Accordion title="Infer Types">
+    Always use `z.infer<typeof schema>` instead of manually defining types.
+  </Accordion>
+
+  <Accordion title="Meaningful Defaults">
+    Use `.default()` for sensible defaults that reduce form boilerplate.
+  </Accordion>
+
+  <Accordion title="Conditional Validation">
+    Use `.superRefine()` for complex validation logic that depends on multiple fields.
+  </Accordion>
+
+  <Accordion title="Consistent Naming">
+    Use pattern: `{domain}FormSchema`, `{domain}UpdateSchema`, `{domain}CreateSchema`.
+  </Accordion>
+</AccordionGroup>

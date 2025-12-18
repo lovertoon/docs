@@ -1,0 +1,358 @@
+---
+title: "Database Migrations"
+description: "Managing schema changes with Drizzle migrations"
+---
+
+## Overview
+
+Drizzle Kit manages database schema migrations. Changes to `src/server/db/schema.ts` are tracked and applied as migrations.
+
+## Migration Workflow
+
+### 1. Modify Schema
+
+Edit `src/server/db/schema.ts`:
+
+```typescript
+// Adding a new column
+export const comics = createTable("comic", (d) => ({
+  // ... existing columns
+  viewCount: d.integer().default(0), // New column
+}));
+```
+
+### 2. Generate Migration
+
+```bash
+bun run db:generate
+```
+
+This creates a SQL migration file in `drizzle/`:
+
+```
+drizzle/
+└── 0001_add_view_count.sql
+```
+
+### 3. Review Migration
+
+Check the generated SQL:
+
+```sql
+-- drizzle/0001_add_view_count.sql
+ALTER TABLE "lovertoon_comic" ADD COLUMN "view_count" integer DEFAULT 0;
+```
+
+### 4. Apply Migration
+
+```bash
+bun run db:migrate
+```
+
+## Commands Reference
+
+### Generate Migration
+
+```bash
+# Generate from schema changes
+bun run db:generate
+
+# With custom name
+bunx drizzle-kit generate --name add_view_count
+```
+
+### Apply Migrations
+
+```bash
+# Run all pending migrations
+bun run db:migrate
+
+# Check migration status
+bunx drizzle-kit status
+```
+
+### Push Schema (Development Only)
+
+```bash
+# Push schema directly without migrations
+bun run db:push
+```
+
+<Warning>
+`db:push` should only be used in development. It may cause data loss and doesn't create migration files.
+</Warning>
+
+### Drizzle Studio
+
+```bash
+# Open visual database browser
+bun run db:studio
+```
+
+## Configuration
+
+### drizzle.config.ts
+
+```typescript
+import { type Config } from "drizzle-kit";
+
+export default {
+  schema: "./src/server/db/schema.ts",
+  dialect: "postgresql",
+  dbCredentials: {
+    url: process.env.DATABASE_URL!,
+  },
+  tablesFilter: ["lovertoon_*"],
+  out: "./drizzle",
+} satisfies Config;
+```
+
+### Key Options
+
+| Option | Description |
+|--------|-------------|
+| `schema` | Path to schema file(s) |
+| `dialect` | Database type (postgresql) |
+| `dbCredentials.url` | Database connection string |
+| `tablesFilter` | Only manage tables with prefix |
+| `out` | Migration output directory |
+
+## Migration Patterns
+
+### Adding a Column
+
+```typescript
+// Schema change
+export const users = createTable("user", (d) => ({
+  // ... existing
+  lastLoginAt: d.timestamp({ withTimezone: true }), // New
+}));
+```
+
+Generated SQL:
+```sql
+ALTER TABLE "lovertoon_user"
+ADD COLUMN "last_login_at" timestamp with time zone;
+```
+
+### Adding a Column with Default
+
+```typescript
+status: d.varchar({ length: 20 }).notNull().default("pending")
+```
+
+Generated SQL:
+```sql
+ALTER TABLE "lovertoon_example"
+ADD COLUMN "status" varchar(20) NOT NULL DEFAULT 'pending';
+```
+
+### Creating a New Table
+
+```typescript
+export const notifications = createTable("notification", (d) => ({
+  id: d.integer().primaryKey().generatedByDefaultAsIdentity(),
+  userId: d.varchar({ length: 255 }).notNull().references(() => users.id),
+  message: d.text().notNull(),
+  isRead: d.boolean().default(false),
+  createdAt: d.timestamp({ withTimezone: true }).default(sql`CURRENT_TIMESTAMP`),
+}));
+```
+
+### Adding an Index
+
+```typescript
+export const comics = createTable(
+  "comic",
+  (d) => ({
+    // columns...
+  }),
+  (t) => [
+    index("comic_created_at_idx").on(t.createdAt), // New index
+  ]
+);
+```
+
+Generated SQL:
+```sql
+CREATE INDEX "comic_created_at_idx" ON "lovertoon_comic" ("created_at");
+```
+
+### Adding Foreign Key
+
+```typescript
+createdById: d
+  .varchar({ length: 255 })
+  .notNull()
+  .references(() => users.id, { onDelete: "cascade" })
+```
+
+### Adding a Junction Table
+
+```typescript
+export const comicTags = createTable(
+  "comic_tag",
+  (d) => ({
+    comicId: d.integer().notNull().references(() => comics.id, { onDelete: "cascade" }),
+    tagId: d.integer().notNull().references(() => tags.id, { onDelete: "cascade" }),
+  }),
+  (t) => [
+    primaryKey({ columns: [t.comicId, t.tagId] }),
+    index("comic_tag_comic_idx").on(t.comicId),
+    index("comic_tag_tag_idx").on(t.tagId),
+  ]
+);
+```
+
+## Data Migrations
+
+For migrations that need to transform data, create a custom script:
+
+```typescript
+// scripts/migrate-data.ts
+import { db } from "~/server/db";
+import { comics } from "~/server/db/schema";
+import { eq } from "drizzle-orm";
+
+async function migrateData() {
+  // Example: Set default status for null values
+  await db
+    .update(comics)
+    .set({ status: "draft" })
+    .where(eq(comics.status, null));
+
+  console.log("Data migration complete");
+}
+
+migrateData();
+```
+
+Run with:
+```bash
+bun run scripts/migrate-data.ts
+```
+
+## Rollback Strategy
+
+Drizzle doesn't have built-in rollback. Options:
+
+### 1. Manual Rollback Script
+
+Create a down migration:
+
+```sql
+-- drizzle/0001_add_view_count_down.sql
+ALTER TABLE "lovertoon_comic" DROP COLUMN "view_count";
+```
+
+Apply manually:
+```bash
+bunx drizzle-kit execute --sql ./drizzle/0001_add_view_count_down.sql
+```
+
+### 2. Database Backup
+
+Before running migrations:
+
+```bash
+# Backup
+pg_dump $DATABASE_URL > backup.sql
+
+# Restore if needed
+psql $DATABASE_URL < backup.sql
+```
+
+### 3. Point-in-Time Recovery
+
+Use managed database features (e.g., AWS RDS snapshots).
+
+## Production Migrations
+
+### Pre-Deployment Checklist
+
+1. **Review Migration SQL** - Ensure it won't break existing queries
+2. **Test on Staging** - Run migration against staging database
+3. **Backup Database** - Create backup before migration
+4. **Plan Downtime** - Schedule if migration is long-running
+5. **Monitor Locks** - Watch for table locks during migration
+
+### Safe Migration Practices
+
+<AccordionGroup>
+  <Accordion title="Add Columns as Nullable First">
+    ```typescript
+    // Step 1: Add as nullable
+    newColumn: d.varchar({ length: 100 })
+
+    // Step 2: Backfill data
+    // Step 3: Add NOT NULL constraint
+    newColumn: d.varchar({ length: 100 }).notNull()
+    ```
+  </Accordion>
+
+  <Accordion title="Create Indexes Concurrently">
+    For large tables, create indexes manually:
+    ```sql
+    CREATE INDEX CONCURRENTLY "comic_name_idx"
+    ON "lovertoon_comic" ("name");
+    ```
+  </Accordion>
+
+  <Accordion title="Avoid Renaming Columns">
+    Instead:
+    1. Add new column
+    2. Migrate data
+    3. Update application code
+    4. Remove old column
+  </Accordion>
+
+  <Accordion title="Use Transactions for Data Migrations">
+    Wrap data migrations in transactions for atomicity.
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+### Migration Failed
+
+If a migration fails partway:
+
+1. Check migration status:
+   ```bash
+   bunx drizzle-kit status
+   ```
+
+2. Fix the issue in schema
+
+3. Generate new migration or manually fix
+
+4. Re-run migrations
+
+### Schema Out of Sync
+
+If schema doesn't match database:
+
+```bash
+# Pull schema from database (overwrites schema.ts)
+bunx drizzle-kit introspect
+
+# Or push schema to database (development only)
+bun run db:push
+```
+
+### Conflicting Migrations
+
+When multiple developers create migrations:
+
+1. Merge schema changes in `schema.ts`
+2. Delete conflicting migration files
+3. Generate a new combined migration
+4. Apply the new migration
+
+## Best Practices
+
+- **One Change Per Migration** - Keep migrations focused
+- **Test Migrations** - Always test on staging first
+- **Document Breaking Changes** - Note any application changes needed
+- **Version Control Migrations** - Commit migration files with schema changes
+- **Don't Edit Applied Migrations** - Create new migrations instead

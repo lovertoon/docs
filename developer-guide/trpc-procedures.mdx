@@ -1,0 +1,435 @@
+---
+title: "tRPC Procedures"
+description: "Procedure types and middleware for authorization"
+---
+
+## Overview
+
+Procedures are the building blocks of tRPC APIs. Lovertoon defines 6 procedure types with different authorization levels.
+
+## Procedure Types
+
+### publicProcedure
+
+No authentication required. Anyone can call.
+
+```typescript
+import { publicProcedure } from "~/server/api/trpc";
+
+export const comicRouter = createTRPCRouter({
+  // Anyone can view comics
+  getAll: publicProcedure.query(async ({ ctx }) => {
+    return ctx.db.query.lovertoonComics.findMany({
+      where: eq(comics.status, "active"),
+    });
+  }),
+});
+```
+
+**Use cases:**
+- Public content (comics, categories)
+- Search functionality
+- Public profiles
+
+### protectedProcedure
+
+Requires authenticated user. Session must exist.
+
+```typescript
+import { protectedProcedure } from "~/server/api/trpc";
+
+export const userRouter = createTRPCRouter({
+  // User must be logged in
+  updateProfile: protectedProcedure
+    .input(updateProfileSchema)
+    .mutation(async ({ ctx, input }) => {
+      // ctx.session.user is guaranteed to exist
+      return ctx.db.update(users)
+        .set(input)
+        .where(eq(users.id, ctx.session.user.id));
+    }),
+});
+```
+
+**Use cases:**
+- User profile updates
+- Purchases
+- Favorites
+- Comments
+
+### adminProcedure
+
+Requires `admin` or `super_admin` role.
+
+```typescript
+import { adminProcedure } from "~/server/api/trpc";
+
+export const userManagementRouter = createTRPCRouter({
+  // Only admins can manage users
+  getAllUsers: adminProcedure.query(async ({ ctx }) => {
+    return ctx.db.query.lovertoonUsers.findMany();
+  }),
+
+  updateUserRole: adminProcedure
+    .input(z.object({ userId: z.string(), role: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.update(users)
+        .set({ role: input.role })
+        .where(eq(users.id, input.userId));
+    }),
+});
+```
+
+**Use cases:**
+- User management
+- Content moderation
+- System settings
+- Creator applications
+
+### superAdminProcedure
+
+Requires `super_admin` role only.
+
+```typescript
+import { superAdminProcedure } from "~/server/api/trpc";
+
+export const systemRouter = createTRPCRouter({
+  // Super admin only
+  updateSystemSettings: superAdminProcedure
+    .input(updateSettingsSchema)
+    .mutation(async ({ ctx, input }) => {
+      // Sensitive operations
+    }),
+});
+```
+
+**Use cases:**
+- System configuration
+- Dangerous operations
+- Role management for admins
+
+### creatorProcedure
+
+Requires `creator` or `creator_assistance` role. Also allows admins.
+
+```typescript
+import { creatorProcedure } from "~/server/api/trpc";
+
+export const chapterRouter = createTRPCRouter({
+  // Creators and assistants can create chapters
+  create: creatorProcedure
+    .input(createChapterSchema)
+    .mutation(async ({ ctx, input }) => {
+      // Check if assistant has permission
+      if (ctx.session.user.role === "creator_assistance") {
+        const assistant = await ctx.db.query.lovertoonCreatorAssistants.findFirst({
+          where: eq(creatorAssistants.assistantUserId, ctx.session.user.id),
+        });
+
+        if (!assistant?.canAddChapter) {
+          throw new TRPCError({ code: "FORBIDDEN" });
+        }
+      }
+
+      return ctx.db.insert(chapters).values(input);
+    }),
+});
+```
+
+**Use cases:**
+- Content creation
+- Chapter management
+- Basic creator operations
+
+### creatorOnlyProcedure
+
+Requires `creator` role. Assistants are NOT allowed.
+
+```typescript
+import { creatorOnlyProcedure } from "~/server/api/trpc";
+
+export const creatorRouter = createTRPCRouter({
+  // Only the creator themselves
+  updateBankInfo: creatorOnlyProcedure
+    .input(updateBankInfoSchema)
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.update(creators)
+        .set(input)
+        .where(eq(creators.userId, ctx.session.user.id));
+    }),
+});
+```
+
+**Use cases:**
+- Bank information
+- Payout settings
+- Creator profile (sensitive)
+- Team management
+
+## Procedure Implementation
+
+### Base Implementation
+
+```typescript
+// src/server/api/trpc.ts
+import { initTRPC, TRPCError } from "@trpc/server";
+
+const t = initTRPC.context<typeof createTRPCContext>().create({
+  transformer: superjson,
+});
+
+export const createTRPCRouter = t.router;
+export const publicProcedure = t.procedure;
+```
+
+### Authentication Middleware
+
+```typescript
+const enforceUserIsAuthed = t.middleware(({ ctx, next }) => {
+  if (!ctx.session?.user) {
+    throw new TRPCError({ code: "UNAUTHORIZED" });
+  }
+  return next({
+    ctx: {
+      session: { ...ctx.session, user: ctx.session.user },
+    },
+  });
+});
+
+export const protectedProcedure = t.procedure.use(enforceUserIsAuthed);
+```
+
+### Role-Based Middleware
+
+```typescript
+const enforceUserIsAdmin = t.middleware(({ ctx, next }) => {
+  if (!ctx.session?.user) {
+    throw new TRPCError({ code: "UNAUTHORIZED" });
+  }
+
+  const role = ctx.session.user.role;
+  if (role !== "admin" && role !== "super_admin") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "เฉพาะผู้ดูแลระบบเท่านั้น",
+    });
+  }
+
+  return next({ ctx });
+});
+
+export const adminProcedure = t.procedure.use(enforceUserIsAdmin);
+```
+
+### Creator Middleware
+
+```typescript
+const enforceUserIsCreator = t.middleware(({ ctx, next }) => {
+  if (!ctx.session?.user) {
+    throw new TRPCError({ code: "UNAUTHORIZED" });
+  }
+
+  const role = ctx.session.user.role;
+  const allowedRoles = ["creator", "creator_assistance", "admin", "super_admin"];
+
+  if (!allowedRoles.includes(role)) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "เฉพาะครีเอเตอร์เท่านั้น",
+    });
+  }
+
+  return next({ ctx });
+});
+
+export const creatorProcedure = t.procedure.use(enforceUserIsCreator);
+```
+
+## Context Extension
+
+Each middleware can extend context for downstream use:
+
+```typescript
+const addCreatorInfo = t.middleware(async ({ ctx, next }) => {
+  if (!ctx.session?.user) {
+    throw new TRPCError({ code: "UNAUTHORIZED" });
+  }
+
+  const creator = await ctx.db.query.lovertoonCreators.findFirst({
+    where: eq(creators.userId, ctx.session.user.id),
+  });
+
+  return next({
+    ctx: {
+      ...ctx,
+      creator, // Available in procedure
+    },
+  });
+});
+
+export const creatorWithInfoProcedure = t.procedure
+  .use(enforceUserIsAuthed)
+  .use(addCreatorInfo);
+
+// Usage
+.query(async ({ ctx }) => {
+  // ctx.creator is available and typed
+  return ctx.creator?.displayName;
+});
+```
+
+## Custom Middleware
+
+### Logging Middleware
+
+```typescript
+const logProcedure = t.middleware(async ({ path, type, next }) => {
+  const start = Date.now();
+  const result = await next();
+  const duration = Date.now() - start;
+
+  console.log(`[${type}] ${path} - ${duration}ms`);
+
+  return result;
+});
+
+export const loggedProcedure = publicProcedure.use(logProcedure);
+```
+
+### Rate Limiting
+
+```typescript
+const rateLimit = t.middleware(async ({ ctx, next }) => {
+  const ip = ctx.headers.get("x-forwarded-for") ?? "unknown";
+
+  // Check rate limit (implementation varies)
+  const isRateLimited = await checkRateLimit(ip);
+
+  if (isRateLimited) {
+    throw new TRPCError({
+      code: "TOO_MANY_REQUESTS",
+      message: "กรุณารอสักครู่",
+    });
+  }
+
+  return next();
+});
+```
+
+### Ownership Check
+
+```typescript
+const enforceComicOwnership = t.middleware(async ({ ctx, input, next }) => {
+  const comicId = (input as { comicId?: number })?.comicId;
+
+  if (comicId) {
+    const comic = await ctx.db.query.lovertoonComics.findFirst({
+      where: eq(comics.id, comicId),
+    });
+
+    if (comic?.createdById !== ctx.session?.user?.id) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "คุณไม่มีสิทธิ์แก้ไขการ์ตูนนี้",
+      });
+    }
+  }
+
+  return next();
+});
+```
+
+## Input Validation
+
+### With Zod Schema
+
+```typescript
+import { z } from "zod";
+
+const createComicSchema = z.object({
+  name: z.string().min(1, "กรุณาใส่ชื่อการ์ตูน").max(256),
+  slug: z.string().min(1).max(256),
+  description: z.string().optional(),
+  isAdult: z.boolean().default(false),
+});
+
+export const comicRouter = createTRPCRouter({
+  create: protectedProcedure
+    .input(createComicSchema)
+    .mutation(async ({ ctx, input }) => {
+      // input is fully typed and validated
+      return ctx.db.insert(comics).values(input);
+    }),
+});
+```
+
+### External Schema File
+
+```typescript
+// src/lib/schemas/comic.ts
+export const createComicSchema = z.object({...});
+export type CreateComicInput = z.infer<typeof createComicSchema>;
+
+// src/server/api/routers/comic.ts
+import { createComicSchema } from "~/lib/schemas/comic";
+
+.input(createComicSchema)
+```
+
+## Procedure Chaining
+
+Build complex procedures by chaining:
+
+```typescript
+const baseCreatorProcedure = t.procedure
+  .use(enforceUserIsAuthed)
+  .use(enforceUserIsCreator)
+  .use(addCreatorInfo);
+
+const ownershipProcedure = baseCreatorProcedure
+  .use(enforceComicOwnership);
+
+export const chapterRouter = createTRPCRouter({
+  update: ownershipProcedure
+    .input(updateChapterSchema)
+    .mutation(async ({ ctx, input }) => {
+      // All middleware checks passed
+      // ctx.creator is available
+    }),
+});
+```
+
+## Authorization Matrix
+
+| Procedure | User | Creator | Assistant | Admin | Super Admin |
+|-----------|------|---------|-----------|-------|-------------|
+| `publicProcedure` | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `protectedProcedure` | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `creatorProcedure` | ✗ | ✓ | ✓ | ✓ | ✓ |
+| `creatorOnlyProcedure` | ✗ | ✓ | ✗ | ✓ | ✓ |
+| `adminProcedure` | ✗ | ✗ | ✗ | ✓ | ✓ |
+| `superAdminProcedure` | ✗ | ✗ | ✗ | ✗ | ✓ |
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Start Restrictive">
+    Default to more restrictive procedures and open up as needed.
+  </Accordion>
+
+  <Accordion title="Use Appropriate Procedure">
+    Match procedure type to the required authorization level.
+  </Accordion>
+
+  <Accordion title="Add Resource-Level Checks">
+    Procedures check role; add checks for specific resource ownership.
+  </Accordion>
+
+  <Accordion title="Thai Error Messages">
+    Use Thai for user-facing error messages.
+  </Accordion>
+
+  <Accordion title="Middleware Order Matters">
+    Auth middleware should come before role checks.
+  </Accordion>
+</AccordionGroup>
